@@ -85,14 +85,15 @@ def get_all_counts(bams, refs, min_bq):
     min_bq    minimum base quality
 
     Returns
-        a dictionary of counts, where counts[bam_fn][ref] gives the array of
-        counts for that bam and reference sequence
+        a dictionary of counts, where counts[ref][bam_fn] gives the array of
+        counts for that reference sequence and bam file
     '''
+
     counts = {}
-    for bam_fn, bam in bams.iteritems():
-        counts[bam_fn] = {}
-        bamref = bam.header['SQ']
-        for ref in refs:
+    for ref in refs:
+        counts[ref] = {}
+        for bam_fn, bam in bams.iteritems():
+            bamref = bam.header['SQ']
             reflen_found = False
             for d in bamref:
                 if d['SN'] == ref:
@@ -104,34 +105,36 @@ def get_all_counts(bams, refs, min_bq):
                     ref, bam_fn))
             counts = get_counts(bam, contig=ref, start = 0, end = reflen,
                     quality_threshold = min_bq)
-            counts[bam_fn][ref] = counts
+            counts[ref][bam_fn] = counts
     return counts
 
 def get_freqs(counts):
     freqs = {}
-    for bam_fn, bam_counts in counts.iteritems():
-        freqs[bam_fn] = {}
-        for ref, c in bam_counts.iteritems():
+    for ref, ref_counts in counts.iteritems():
+        freqs[ref] = {}
+        for bam_fn, c in ref_counts.iteritems():
             # using jit or cython, this can be done with 1/2 the memory
             f = c / np.maximum(c,1)[:,None]
-            freqs[bam_fn][ref] = f
+            freqs[ref][bam_fn] = f
     return freqs
 
 def determine_candidates(freqs, min_candidate_freq):
     candidates = {}
-    for bam_fn, bam_freqs in freqs.iteritems():
-        candidates[bam_fn] = {}
-        for ref, f in bam_freqs.iteritems():
+    for ref, ref_freqs in freqs.iteritems():
+        candidates[ref] = {}
+        for bam_fn, f in ref_freqs.iteritems():
             is_candidate = (f > min_candidate_freq).sum(1) > 1
-            candidates[bam_fn][ref] = is_candidate
+            candidates[ref][bam_fn] = is_candidate
     return candidates
 
 def get_all_consensuses(counts, min_coverage):
     all_con = {}
-    for bam_fn, bam_counts in counts.iteritems():
+    for ref, ref_counts in counts.iteritems():
         all_con[ref] = {}
-        for ref, c in bam_counts.iteritems():
+        for bam_fn, c in ref_counts.iteritems():
             consensus = get_consensus(c, min_cov=min_coverage)
+            all_con[ref][bam_fn] = consensus
+    return all_con
 
 def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses):
     '''
@@ -145,26 +148,26 @@ def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses):
     
     Returns tuple (d, rowlen)
         d is dict of dict of dict of CovariateRowMakers:
-        rm[bam_fn][ref][base] gives the CovariateRowMaker for this bam, ref,
+        rm[ref][bam_fn][base] gives the CovariateRowMaker for this bam, ref,
         and base
 
         rowlen is the length of a row in the matrix
     '''
     rm = {}
-    for bam_fn in bam_fns:
-        rm[bam_fn] = {}
-        for ref in refs:
-            rm[bam_fn][ref] = {}
-            cons = consensuses[bam_fn][ref]
+    for ref in refs:
+        rm[ref] = {}
+        for bam_fn in bam_fns:
+            rm[ref][bam_fn] = {}
+            cons = consensuses[ref][bam_fn]
             other_cons = [
-                    consensuses[fn][ref] for fn in bam_fns if fn != bam_fn]
+                    consensuses[ref][fn] for fn in bam_fns if fn != bam_fn]
             for base in 'ACGT':
-                rm[bam_fn][ref][base] = CovariateRowMaker(
+                rm[ref][bam_fn][base] = CovariateRowMaker(
                     base,
                     context_len,
                     dend_roundby,
                     cons,
                     other_cons)
     
-    rowlen = rm[bam_fn][ref][base].rowlen
+    rowlen = rm[ref][bam_fn][base].rowlen
     return rm, rowlen

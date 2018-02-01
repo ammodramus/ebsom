@@ -50,12 +50,11 @@ nc_observations = NonCandidateCollector(rowlen)
 c_observations = CandidateCollector(rowlen)
             
 for ref in ref_names:
-    consensuses = all_consensuses[
     for bam_fn in bam_fns:
         bam = bams[bam_fn]
-        counts = all_counts[bam_fn][ref]
-        freqs = all_freqs[bam_fn][ref]
-        is_can = is_candidate[bam_fn][ref]
+        counts = all_counts[ref][bam_fn]
+        freqs = all_freqs[ref][bam_fn]
+        is_can = is_candidate[ref][bam_fn]
 
         
 for entry in aln.header['SQ']:
