@@ -1,3 +1,4 @@
+import numpy as np
 from collections import Counter
 
 class GroupCollector(object):
@@ -12,7 +13,7 @@ class GroupCollector(object):
         self.rowlen = rowlen
     
     def add(self, row):
-        if row.shape[0] != rowlen:
+        if row.shape[0] != self.rowlen:
             raise ValueError('incorrect row length')
         self.rowcounts[row.data] += 1
     
@@ -33,10 +34,11 @@ class CandidateCollector(object):
         self.rowlen = rowlen
         self.groups = {}  # keys are ref, refpos, is_reverse, (consbase, readnum, obsbase)
     
-    def add(self, row, ref, reflocus, is_reverse, consbase, readnum, obsbase):
+    def add(self, bam, row, ref, reflocus, is_reverse,
+            consbase, readnum, obsbase):
         d = self.groups
         # three layers of dicts before the final dict
-        for key in (ref, reflocus, is_reverse):
+        for key in (bam, ref, reflocus, is_reverse):
             try:
                 d = d[key]
             except KeyError:
@@ -54,22 +56,24 @@ class CandidateCollector(object):
         '''
         returns a dict d, where
 
-        d[ref][loc][is_reverse][(consbase,readnum,obsbase)]
+        d[bam][ref][loc][is_reverse][(consbase,readnum,obsbase)]
 
         is the tuple (X, c), where X is a covariate matrix, c are this matrices
         multiplicities, ref is the reference name, loc is the position,
         is_reverse is boolean, and (consbase,readnum,obsbase) is the final key.
         '''
         ret = {}
-        for ref, refdict in self.groups.iteritems():
-            ret[ref] = {}
-            for loc, locdict in refdict.iteritems():
-                ret[ref][loc] = {}
-                for rev, revdict in ret[ref][loc].iteritems():
-                    ret[ref][loc][rev] = {}
-                    # "final key" == (cons,rnum,obs)
-                    for fkey, group in revdict.iteritems():
-                        ret[ref][loc][ref][fkey] = group.collect()
+        for bam, bam_dict in self.groups.iteritems():
+            ret[bam] = {}
+            for ref, refdict in bam_dict.iteritems():
+                ret[bam][ref] = {}
+                for loc, locdict in refdict.iteritems():
+                    ret[bam][ref][loc] = {}
+                    for rev, revdict in ret[ref][loc].iteritems():
+                        ret[bam][ref][loc][rev] = {}
+                        # "final key" == (cons,rnum,obs)
+                        for fkey, group in revdict.iteritems():
+                            ret[bam][ref][loc][ref][fkey] = group.collect()
         return ret
 
 
@@ -79,7 +83,7 @@ class NonCandidateCollector(object):
     '''
     def __init__(self, rowlen):
         self.rowlen = rowlen
-        self.groups = {}  # keys are ref, refpos, is_reverse, (consbase, readnum, obsbase)
+        self.groups = {}  # keys are (consbase, readnum, obsbase)
     
     def add(self, row, consbase, readnum, obsbase):
         key = (consbase, readnum, obsbase)
@@ -100,13 +104,6 @@ class NonCandidateCollector(object):
         multiplicities.
         '''
         ret = {}
-        for ref, refdict in self.groups.iteritems():
-            ret[ref] = {}
-            for loc, locdict in refdict.iteritems():
-                ret[ref][loc] = {}
-                for rev, revdict in ret[ref][loc].iteritems():
-                    ret[ref][loc][rev] = {}
-                    # "final key" == (cons,rnum,obs)
-                    for fkey, group in revdict.iteritems():
-                        ret[ref][loc][ref][fkey] = group.collect()
+        for fkey, group in self.groups.iteritems():
+            ret[fkey] = group.collect()
         return ret

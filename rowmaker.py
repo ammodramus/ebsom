@@ -1,3 +1,5 @@
+import numpy as np
+
 class CovariateRowMaker(object):
     def __init__(self,
                  consbase,
@@ -68,14 +70,19 @@ class CovariateRowMaker(object):
                 countcalls = np.zeros_like(thiscons, dtype = np.float64)
                 for oc in othercons:
                     countcalls += (oc != 'N')
-                    countdiffs[(oc != 'N') & (thiscons != 'N') & (oc != thiscons) & (oc == ob)] += 1
+                    filt = ((oc != 'N') & (thiscons != 'N') & (oc != thiscons)
+                            & (oc == ob))
+                    countdiffs[filt] += 1
                 frac_contam = countdiffs / np.maximum(countcalls, 1)
                 contam_rows[:,i] = frac_contam
             self.contam_rows = contam_rows
             self.revcomp_contam_rows = contam_rows[:,::-1].copy()
-        self.rowlen = 1 + use_bq + use_mq + use_dend + 4*self.use_contamination + (4**self.contextlen) - 1 + self.user_ncols
+        self.rowlen = (1 + use_bq + use_mq + use_dend + 
+                4*self.use_contamination + (4**self.contextlen) -
+                1 + self.user_ncols)
     
-    def get_covariate_row(self, consbase, bq, mq, context, dend, refpos, bam_name, reverse):
+    def get_covariate_row(self,
+            consbase, bq, mq, context, dend, refpos, bam_name, reverse):
         row = np.zeros(self.rowlen)
         row[0] = 1.0   # constant
         cur_idx = 1
@@ -86,7 +93,8 @@ class CovariateRowMaker(object):
             row[cur_idx] = mq
             cur_idx += 1
         if self.use_dend:
-            row[cur_idx] = (dend + (self.dend_roundby)/2.0) // self.dend_roundby * self.dend_roundby
+            row[cur_idx] = ((dend + (self.dend_roundby)/2.0)
+                    // self.dend_roundby * self.dend_roundby)
             cur_idx += 1
         if self.use_contamination:
             if not reverse:

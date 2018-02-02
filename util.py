@@ -1,6 +1,8 @@
 import os.path as osp
 import pysam
 from rowmaker import CovariateRowMaker
+import numpy as np
+from numba import jit
 
 def positive_int(val):
     v = int(val)
@@ -21,13 +23,13 @@ def probability(val):
         raise ValueError('invalid probability {}'.format(val))
     return v
 
-BASES = 'ACGT'
-RCBASES = 'TGCA'
+REVCOMPBASES='ACGTN'
+REVCOMPRCBASES='TGCAN'
 def rev_comp(seq):
     try:
-        return ''.join([RCBASES[BASES.index(b)] for b in seq])
+        return ''.join([REVCOMPRCBASES[REVCOMPBASES.index(b)] for b in seq])
     except ValueError:
-        raise ValueError('invalid base')
+        raise ValueError('invalid base in {}'.format(seq))
     raise ValueError('problem in revcomp')
         
 def get_counts(aln_file, *args, **kwargs):
@@ -36,9 +38,9 @@ def get_counts(aln_file, *args, **kwargs):
     counts = np.transpose(counts)
     return counts
 
-def get_consensus(freqs, min_cov = 1):
-    consensus = np.array(list('ACGT'))[freqs.argmax(1)]
-    consensus[freqs.sum(1) < min_cov] = 'N'
+def get_consensus(counts, min_cov = 1):
+    consensus = np.array(list('ACGT'))[counts.argmax(1)]
+    consensus[counts.sum(1) < min_cov] = 'N'
     return consensus
 
 def get_bams(bams_fn):
@@ -51,7 +53,7 @@ def get_bams(bams_fn):
     bam_fns = []
     bams = {}
     with open(bams_fn) as fin:
-        for line in bams_fn:
+        for line in fin:
             bam_fn = line.strip()
             if not osp.isfile(bam_fn):
                 raise ValueError('could not find bam file {}'.format(bam_fn))
@@ -103,11 +105,12 @@ def get_all_counts(bams, refs, min_bq):
             if not reflen_found:
                 raise ValueError('length of ref {} not found in {}'.format(
                     ref, bam_fn))
-            counts = get_counts(bam, contig=ref, start = 0, end = reflen,
+            c = get_counts(bam, contig=ref, start = 0, end = reflen,
                     quality_threshold = min_bq)
-            counts[ref][bam_fn] = counts
+            counts[ref][bam_fn] = c
     return counts
 
+'''
 def get_freqs(counts):
     freqs = {}
     for ref, ref_counts in counts.iteritems():
@@ -115,6 +118,21 @@ def get_freqs(counts):
         for bam_fn, c in ref_counts.iteritems():
             # using jit or cython, this can be done with 1/2 the memory
             f = c / np.maximum(c,1)[:,None]
+            freqs[ref][bam_fn] = f
+    return freqs
+'''
+
+#def calc_freqs(counts):
+#    for 
+#    pass
+
+def get_freqs(counts):
+    freqs = {}
+    for ref, ref_counts in counts.iteritems():
+        freqs[ref] = {}
+        for bam_fn, c in ref_counts.iteritems():
+            # using jit or cython, this can be done with 1/2 the memory
+            f = c / np.maximum(c.sum(1),1)[:,None]
             freqs[ref][bam_fn] = f
     return freqs
 
