@@ -41,6 +41,7 @@ def get_counts(aln_file, *args, **kwargs):
 def get_consensus(counts, min_cov = 1):
     consensus = np.array(list('ACGT'))[counts.argmax(1)]
     consensus[counts.sum(1) < min_cov] = 'N'
+    consensus = ''.join(list(consensus))
     return consensus
 
 def get_bams(bams_fn):
@@ -109,22 +110,6 @@ def get_all_counts(bams, refs, min_bq):
                     quality_threshold = min_bq)
             counts[ref][bam_fn] = c
     return counts
-
-'''
-def get_freqs(counts):
-    freqs = {}
-    for ref, ref_counts in counts.iteritems():
-        freqs[ref] = {}
-        for bam_fn, c in ref_counts.iteritems():
-            # using jit or cython, this can be done with 1/2 the memory
-            f = c / np.maximum(c,1)[:,None]
-            freqs[ref][bam_fn] = f
-    return freqs
-'''
-
-#def calc_freqs(counts):
-#    for 
-#    pass
 
 def get_freqs(counts):
     freqs = {}

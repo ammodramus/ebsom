@@ -5,6 +5,8 @@ import pysam
 from locuscollectors import NonCandidateCollector, CandidateCollector
 
 import util as ut
+import processreads as pr
+import cyprocessreads as cpr
 
 desc = 'jointly infer sequencing error profiles and polymorphisms'
 parser = argparse.ArgumentParser(
@@ -64,59 +66,19 @@ for ref in ref_names:
         counts = all_counts[ref][bam_fn]
         freqs = all_freqs[ref][bam_fn]
         is_can = is_candidate[ref][bam_fn]
-
         rm = row_makers[ref][bam_fn]
-
         consensus = all_consensuses[ref][bam_fn]
-
         i = 0
+        #cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
+        #        rm, bam_fn, consensus, is_can, nc_observations, c_observations)
         for read in bam.fetch(contig = ref, start = 0, end = reflen):
             mapq = read.mapping_quality
             if mapq < min_mq:
                 continue
-            add_observations(read, min_bq, context_len, rm, bam_fn, consensus,
-                    nc_observations, c_observations)
-            seq = read.seq
-            readlen = read.alen  # aligned length
-            qualities = read.query_qualities
-            reverse = read.is_reverse
-            readnum = read.is_read2 + 1
-            for qpos, refpos in read.get_aligned_pairs(True):
-                if qpos is None or refpos is None:
-                    continue
-                q = qualities[qpos]
-                if q < min_bq:
-                    continue
-                if reverse:
-                    if qpos >= readlen-context_len:
-                        continue
-                    context = ut.rev_comp(seq[qpos+1:qpos+3])
-                    if 'N' in context:
-                        continue
-                    obsbase = ut.rev_comp(seq[qpos])
-                    consbase = ut.rev_comp(consensus[refpos])
-                    dend = readlen - qpos
-                else:
-                    if qpos < context_len:
-                        continue
-                    context = seq[qpos-context_len:qpos]
-                    if 'N' in context:
-                        continue
-                    obsbase = seq[qpos]
-                    consbase = consensus[refpos]
-                    dend = qpos
-                if obsbase == 'N' or consbase == 'N':
-                    continue
-                row = rm[consbase].get_covariate_row(consbase, q, mapq,
-                        context, dend, refpos, bam_fn, reverse)
-                if not is_can[refpos]:
-                    #nc_observations[(consbase, readnum, obsbase)].add(row)
-                    nc_observations.add(row, consbase, readnum, obsbase)
-                else:
-                    c_observations.add(row, bam_fn, ref, refpos, reverse,
-                            consbase, readnum, obsbase)
+            pr.add_observations(read, mapq, min_bq, context_len, rm,
+                    bam_fn, consensus, is_can, nc_observations, c_observations)
             i += 1
-            if i >= 10000:
+            if i >= 1000:
                 break
         
 nco = nc_observations.collect()
