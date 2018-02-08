@@ -1,5 +1,6 @@
 import numpy as np
 from collections import Counter
+import os.path
 
 class GroupCollector(object):
     '''
@@ -64,16 +65,17 @@ class CandidateCollector(object):
         '''
         ret = {}
         for bam, bam_dict in self.groups.iteritems():
-            ret[bam] = {}
+            bam_bn = os.path.basename(bam)
+            ret[bam_bn] = {}
             for ref, refdict in bam_dict.iteritems():
-                ret[bam][ref] = {}
+                ret[bam_bn][ref] = {}
                 for loc, locdict in refdict.iteritems():
-                    ret[bam][ref][loc] = {}
-                    for rev, revdict in ret[ref][loc].iteritems():
-                        ret[bam][ref][loc][rev] = {}
+                    ret[bam_bn][ref][loc] = {}
+                    for rev, revdict in locdict.iteritems():
+                        ret[bam_bn][ref][loc][rev] = {}
                         # "final key" == (cons,rnum,obs)
                         for fkey, group in revdict.iteritems():
-                            ret[bam][ref][loc][ref][fkey] = group.collect()
+                            ret[bam_bn][ref][loc][rev][fkey] = group.collect()
         return ret
 
 

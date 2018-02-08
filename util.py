@@ -1,5 +1,9 @@
+from __future__ import division
 import os.path as osp
 import pysam
+#from rowmaker import CovariateRowMaker
+import pyximport; pyximport.install()
+from cyrowmaker import CyCovariateRowMaker
 from rowmaker import CovariateRowMaker
 import numpy as np
 from numba import jit
@@ -139,7 +143,8 @@ def get_all_consensuses(counts, min_coverage):
             all_con[ref][bam_fn] = consensus
     return all_con
 
-def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses):
+def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses,
+        use_mapq):
     '''
     bam_fns             list of bam filenames
     refs                list of reference sequence names
@@ -165,12 +170,14 @@ def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses):
             other_cons = [
                     consensuses[ref][fn] for fn in bam_fns if fn != bam_fn]
             for base in 'ACGT':
-                rm[ref][bam_fn][base] = CovariateRowMaker(
+                rm[ref][bam_fn][base] = CyCovariateRowMaker(
                     base,
                     context_len,
                     dend_roundby,
                     cons,
-                    other_cons)
+                    other_cons,
+                    bam_fns,
+                    use_mq = use_mapq)
     
     rowlen = rm[ref][bam_fn][base].rowlen
     return rm, rowlen

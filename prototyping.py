@@ -6,7 +6,9 @@ from locuscollectors import NonCandidateCollector, CandidateCollector
 
 import util as ut
 import processreads as pr
+import pyximport; pyximport.install()
 import cyprocessreads as cpr
+import cyregression as cre
 
 desc = 'jointly infer sequencing error profiles and polymorphisms'
 parser = argparse.ArgumentParser(
@@ -37,6 +39,11 @@ parser.add_argument('--round-distance-by',
         help = 'round distance from start of read by this amount. larger '
                'numbers make for more compression in the data, faster '
                'likelihood evaluations.')
+parser.add_argument('--save-data-as', help = 'filename for optional HDF5 data output')
+parser.add_argument('--load-data-from',
+        help = 'load data from previously saved HDF5 file')
+parser.add_argument('--no-mapq', action = 'store_true',
+        help = 'do not use map qualities')
 args = parser.parse_args()
 min_bq = args.min_bq
 min_mq = args.min_mq
@@ -55,87 +62,54 @@ all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = 20)
 
 # make rowmakers
 row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len, 
-        args.round_distance_by, all_consensuses)
-nc_observations = NonCandidateCollector(rowlen)
-c_observations = CandidateCollector(rowlen)
-            
-for ref in ref_names:
-    for bam_fn in bam_fns:
-        reflen = len(all_consensuses[ref][bam_fn])
-        bam = bams[bam_fn]
-        counts = all_counts[ref][bam_fn]
-        freqs = all_freqs[ref][bam_fn]
-        is_can = is_candidate[ref][bam_fn]
-        rm = row_makers[ref][bam_fn]
-        consensus = all_consensuses[ref][bam_fn]
-        i = 0
-        #cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
-        #        rm, bam_fn, consensus, is_can, nc_observations, c_observations)
-        for read in bam.fetch(contig = ref, start = 0, end = reflen):
-            mapq = read.mapping_quality
-            if mapq < min_mq:
-                continue
-            pr.add_observations(read, mapq, min_bq, context_len, rm,
-                    bam_fn, consensus, is_can, nc_observations, c_observations)
-            i += 1
-            if i >= 1000:
-                break
-        
-nco = nc_observations.collect()
-print('########')
-print(nco)
-print('------')
-co = c_observations.collect()
-print(co)
+        args.round_distance_by, all_consensuses, not args.no_mapq)
 
-'''
-for entry in aln.header['SQ']:
-    for read in aln.fetch(contig = ref, start = 0, end = rlen):
-        mapq = read.mapping_quality
-        if mapq < min_mq:
-            continue
-        seq = read.seq
-        readlen = read.alen  # aligned length
-        qualities = read.query_qualities
-        reverse = read.is_reverse
-        readnum = read.is_read2 + 1
-        for qpos, refpos in read.get_aligned_pairs(True):
-            if qpos is None or refpos is None:
-                continue
-            q = qualities[qpos]
-            if q < min_bq:
-                continue
-            if reverse:
-                if qpos >= readlen-context_len:
-                    continue
-                context = rev_comp(seq[qpos+1:qpos+3])
-                if 'N' in context:
-                    continue
-                obsbase = rev_comp(seq[qpos])
-                consbase = rev_comp(consensus[refpos])
-                dend = readlen - qpos
-            else:
-                if qpos < context_len:
-                    continue
-                context = seq[qpos-context_len:qpos]
-                if 'N' in context:
-                    continue
-                obsbase = seq[qpos]
-                consbase = consensus[refpos]
-                dend = qpos
-            if obsbase == 'N' or consbase == 'N':
-                continue
-            row = row_makers[consbase].get_covariate_row(consbase, q, mapq, context, dend, refpos, aln_fn, reverse)
-            if not is_candidate[refpos]:
-                nc_observations[(consbase, readnum, obsbase)].add(row)
-            else:
-                c_observations.add(row, refpos, consbase, readnum, obsbase)
+if args.load_data_from is None:
+    nc_observations = NonCandidateCollector(rowlen)
+    c_observations = CandidateCollector(rowlen)
                 
-            #if consbase != obsbase:
-            #    print(consbase, obsbase, q, qpos, refpos)
-        # base quality, map quality, distance from beginning, contaminant frequency, sequence context dummy var, constant
-        # plus, user-defined
-        i += 1
-        if i >= 10000:
-            break
-'''
+    for ref in ref_names:
+        for bam_fn in bam_fns:
+            reflen = len(all_consensuses[ref][bam_fn])
+            bam = bams[bam_fn]
+            counts = all_counts[ref][bam_fn]
+            freqs = all_freqs[ref][bam_fn]
+            is_can = is_candidate[ref][bam_fn]
+            rm = row_makers[ref][bam_fn]
+            consensus = all_consensuses[ref][bam_fn]
+            cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
+                    rm, bam_fn, consensus, is_can, nc_observations, c_observations)
+            #i = 0
+            #for read in bam.fetch(contig = ref, start = 0, end = reflen):
+            #    mapq = read.mapping_quality
+            #    if mapq < min_mq:
+            #        continue
+            #    pr.add_observations(read, mapq, min_bq, context_len, rm,
+            #            bam_fn, consensus, is_can, nc_observations, c_observations)
+            #    i += 1
+            #    if i >= 1000:
+            #        break
+            
+    nco = nc_observations.collect()
+    co = c_observations.collect()
+
+    if args.save_data_as is not None:
+        try:
+            import deepdish as dd
+        except ImportError:
+            raise ImportError('saving output requires deepdish')
+        data = (nco, co)
+
+        import warnings
+        with warnings.catch_warnings():
+            dd.io.save(args.save_data_as, data)
+
+else:
+    try:
+        import deepdish as dd
+    except ImportError:
+        raise ImportError('saving output requires deepdish')
+    nco, co = dd.io.load(args.load_data_from)
+
+# non-candidate regression
+nco_reg = cre.Regression(nco)
