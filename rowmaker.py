@@ -81,6 +81,7 @@ class CovariateRowMaker(object):
                 4*self.use_contamination + (4**self.contextlen) -
                 1 + self.user_ncols)
     
+    #@profile
     def get_covariate_row(self,
             consbase, bq, mq, context, dend, refpos, bam_name, reverse):
         row = np.zeros(self.rowlen)
