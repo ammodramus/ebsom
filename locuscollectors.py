@@ -85,10 +85,10 @@ class NonCandidateCollector(object):
     '''
     def __init__(self, rowlen):
         self.rowlen = rowlen
-        self.groups = {}  # keys are (consbase, readnum, obsbase)
+        self.groups = {}  # keys are (consbase, readnum)
     
-    def add(self, row, consbase, readnum, obsbase):
-        key = (consbase, readnum, obsbase)
+    def add(self, row, consbase, readnum):
+        key = (consbase, readnum)
         try:
             gc = self.groups[key]
         except KeyError:

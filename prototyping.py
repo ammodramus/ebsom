@@ -3,10 +3,8 @@ import argparse
 import numpy as np
 import pysam
 from locuscollectors import NonCandidateCollector, CandidateCollector
-
 import util as ut
 import processreads as pr
-import pyximport; pyximport.install()
 import cyprocessreads as cpr
 import cyregression as cre
 
@@ -49,24 +47,27 @@ min_bq = args.min_bq
 min_mq = args.min_mq
 context_len = args.context_length
 
-bam_fns, bams = ut.get_bams(args.bams)
+prefix, bam_fns, bams = ut.get_bams(args.bams)
 ref_names = ut.get_ref_names(args.references, bams)
+
+# break bam names into prefix/name
 print('getting counts')
 all_counts = ut.get_all_counts(bams, ref_names, min_bq)
 print('getting freqs')
 all_freqs = ut.get_freqs(all_counts)
-print('getting candidate')
-is_candidate = ut.determine_candidates(all_freqs, args.min_candidate_freq)
 print('getting consensus')
 all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = 20)
+print('getting major-minor')
+all_majorminor = ut.get_all_majorminor(all_counts)
+
 
 # make rowmakers
 row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len, 
         args.round_distance_by, all_consensuses, not args.no_mapq)
 
 if args.load_data_from is None:
-    nc_observations = NonCandidateCollector(rowlen)
-    c_observations = CandidateCollector(rowlen)
+    covariate_matrices = ut.get_covariate_matrices(rowlen)
+    locus_observations = ut.get_locus_observations(all_majorminor)
                 
     for ref in ref_names:
         for bam_fn in bam_fns:
@@ -74,31 +75,23 @@ if args.load_data_from is None:
             bam = bams[bam_fn]
             counts = all_counts[ref][bam_fn]
             freqs = all_freqs[ref][bam_fn]
-            is_can = is_candidate[ref][bam_fn]
             rm = row_makers[ref][bam_fn]
+            mm = all_majorminor[ref][bam_fn]
+            locobs = locus_observations[ref][bam_fn]
             consensus = all_consensuses[ref][bam_fn]
             cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
-                    rm, bam_fn, consensus, is_can, nc_observations, c_observations)
-            #i = 0
-            #for read in bam.fetch(contig = ref, start = 0, end = reflen):
-            #    mapq = read.mapping_quality
-            #    if mapq < min_mq:
-            #        continue
-            #    pr.add_observations(read, mapq, min_bq, context_len, rm,
-            #            bam_fn, consensus, is_can, nc_observations, c_observations)
-            #    i += 1
-            #    if i >= 1000:
-            #        break
-            
-    nco = nc_observations.collect()
-    co = c_observations.collect()
+                    rm, bam_fn, consensus, covariate_matrices, locobs, mm)
 
+    cm = ut.collect_covariate_matrices(covariate_matrices)
+    lo = ut.collect_loc_obs(locus_observations)
+
+            
     if args.save_data_as is not None:
         try:
             import deepdish as dd
         except ImportError:
             raise ImportError('saving output requires deepdish')
-        data = (nco, co)
+        data = (cm, lo, all_majorminor)
 
         import warnings
         with warnings.catch_warnings():
@@ -109,7 +102,6 @@ else:
         import deepdish as dd
     except ImportError:
         raise ImportError('saving output requires deepdish')
-    nco, co = dd.io.load(args.load_data_from)
+    cm, lo, all_majorminor = dd.io.load(args.load_data_from)
 
-# non-candidate regression
-nco_reg = cre.Regression(nco)
+import pdb; pdb.set_trace()
