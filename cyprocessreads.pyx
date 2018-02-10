@@ -139,7 +139,7 @@ def add_bam_observations(
         locus_observations,
         major_alleles,
         int update_interval = 1000,
-        max_num_reads = 1000):
+        max_num_reads = -1):
 
     cdef:
         AlignedSegment read
