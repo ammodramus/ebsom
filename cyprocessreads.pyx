@@ -8,6 +8,7 @@ import sys
 
 from cylocobs cimport LocObs
 from cyregcov cimport RegCov
+from cyrowmaker cimport CyCovariateRowMaker
 
 cdef const char *BASES = 'ACGT'
 cdef inline int get_base_idx(bytes obsbase, bytes true):
@@ -39,11 +40,11 @@ def add_observations(
         int mapq,
         int min_bq,
         int context_len,
-        rm,
+        CyCovariateRowMaker rm,
         bytes bam_fn,
         bytes ref,
         bytes consensus,
-        covariate_matrices,
+        covariate_matrix,
         locus_observations,
         major_alleles):
     cdef:
@@ -86,43 +87,21 @@ def add_observations(
             dend = qpos
         if obsbase == 'N' or consbase == 'N':
             continue
-        if consbase not in rm:
-            import sys
-            print(consbase, file=sys.stderr)
-            raise ValueError('not here')
-        row = rm[consbase].get_covariate_row(consbase, q, mapq,
-                context, dend, refpos, bam_fn, reverse)
+        row = rm.get_covariate_row(q, mapq, context, dend, refpos, bam_fn,
+                reverse)
 
         major = major_alleles[refpos][0]
         if major == 'N':
             continue
         if reverse:
             major = cut.rev_comp(major)
-        cov = covariate_matrices[(major, readnum)]
-        cov_idx = cov.set_default(row)
+        cov_idx = covariate_matrix.set_default(row)
         base_idx = get_base_idx(obsbase, major)
         if base_idx < 0 or base_idx > 3:
             raise ValueError('invalid base')
-        mmidx = 0
         revidx = int(reverse)
         ridx = readnum-1
-        loc = locus_observations[refpos][mmidx][revidx][ridx]
-        loc.add_obs(cov_idx, base_idx)
-
-        minor = major_alleles[refpos][1]
-        if minor == 'N':
-            continue
-        if reverse:
-            minor = cut.rev_comp(minor)
-        cov = covariate_matrices[(minor, readnum)]
-        cov_idx = cov.set_default(row)
-        base_idx = get_base_idx(obsbase, minor)
-        if base_idx < 0 or base_idx > 3:
-            raise ValueError('invalid base')
-        mmidx = 1
-        revidx = int(reverse)
-        ridx = readnum-1
-        loc = locus_observations[refpos][mmidx][revidx][ridx]
+        loc = locus_observations[refpos][revidx][ridx]
         loc.add_obs(cov_idx, base_idx)
 
 def add_bam_observations(
@@ -132,10 +111,10 @@ def add_bam_observations(
         int min_bq,
         int min_mq,
         int context_len,
-        rm,
+        CyCovariateRowMaker rm,
         bytes bam_fn,
         bytes consensus,
-        covariate_matrices,
+        covariate_matrix,
         locus_observations,
         major_alleles,
         int update_interval = 1000,
@@ -151,7 +130,7 @@ def add_bam_observations(
         if mapq < min_mq:
             continue
         add_observations(read, mapq, min_bq, context_len, rm,
-                bam_fn, ref, consensus, covariate_matrices,
+                bam_fn, ref, consensus, covariate_matrix,
                 locus_observations, major_alleles)
         if i % update_interval == 0:
             print('{}, {}: processed {} of {} reads'.format(
