@@ -1,3 +1,4 @@
+from __future__ import print_function
 import math
 import numpy as np
 from numba import jit
@@ -7,7 +8,8 @@ import afd
 import util as ut
 
 
-@jit
+
+#@jit
 def calc_loc_ll_wrong(
         lpA, lpa, lo, lpf, logf, log1mf):
     ll = 0.0
@@ -41,9 +43,8 @@ def calc_loc_ll_wrong(
             ll += count*Mp  # multiply by the count of this observation
     return ll
 
-
-@jit
-def calc_loc_ll(
+#@jit
+def calc_loc_ll_wrong2(
         lpA, lpa, lo, lpf, logf, log1mf):
     ll = 0.0
     nlo = lo.shape[0]  # number of observations at this locus
@@ -76,44 +77,143 @@ def calc_loc_ll(
     locll = math.log(locll) + Ma
     return locll
 
+@jit
+def calc_loc_ll_cond_f_and_fr(lpA,  # the "major" log-probabilities for this orientation and read num.
+                          lpa,      # " ", for minor
+                          lo,     # the observations for this 
+                          logf,   # now a double
+                          log1mf):  # this also a double
+    fll = 0.0
+    Ma = -1e100  # very small number... DBL_MAX is ~1e308
+    nlo = lo.shape[0]
+    for j in range(nlo):
+        X_idx = lo[j,0] # the index of this row in the covariate matrix and 
+                       # log-probability matrices
+        for k in range(4):
+            count = lo[j,k+1]  # number of observations of this outcome with this covariate row
+            if count <= 0:
+                continue
+            c = logf + lpa[X_idx,k]
+            d = log1mf + lpA[X_idx,k]
+            M = max(c,d)
+            e = M + math.log(math.exp(c-M) + math.exp(d-M))
+            fll += count*e
+    return fll
+
+
+@jit
+def calc_loc_ll(lp_maj_f1,
+                lp_maj_f2,
+                lp_min_f1,
+                lp_min_f2,
+                lp_maj_r1,
+                lp_maj_r2,
+                lp_min_r1,
+                lp_min_r2,
+                lo_f1,
+                lo_f2,
+                lo_r1,
+                lo_r2,
+                logpf, lf, l1mf):
+    ll = 0.0
+    nj = logpf.shape[0]  # number of frequencies
+    Ma = -1e100  # very small number... DBL_MAX is ~1e308
+    a = logpf.copy()
+    for i in range(nj):
+        tlf = lf[i]
+        tl1mf = l1mf[i]
+        tot_fll = 0.0
+        # calculate the fll's for different fr/12's
+        tot_fll += calc_loc_ll_cond_f_and_fr(
+                lp_maj_f1,
+                lp_min_f1,
+                lo_f1,
+                tlf,
+                tl1mf)
+        tot_fll += calc_loc_ll_cond_f_and_fr(
+                lp_maj_f2,
+                lp_min_f2,
+                lo_f2,
+                tlf,
+                tl1mf)
+        tot_fll += calc_loc_ll_cond_f_and_fr(
+                lp_maj_r1,
+                lp_min_r1,
+                lo_r1,
+                tlf,
+                tl1mf)
+        tot_fll += calc_loc_ll_cond_f_and_fr(
+                lp_maj_r2,
+                lp_min_r2,
+                lo_r2,
+                tlf,
+                tl1mf)
+        a[i] += tot_fll
+        if a[i] > Ma:
+            Ma = a[i]
+    locll = 0   # logsumexp routine here
+    for el in a:
+        locll += math.exp(el-Ma)
+    locll = math.log(locll) + Ma
+    return locll
+
+
 def calc_bam_ll(data):
     avg_ll = np.zeros(3)
     params, bamobs, bam_mm, logprobs, logpf, logf, log1mf = data
-    ll = 0.0
+    bamll = 0.0
     for i, locobs in enumerate(bamobs):
         major, minor = bam_mm[i]
         rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
-        regkeys = (
-            ((major, 1), (minor, 1), (0,0)),
-            ((major, 2), (minor, 2), (0,1)),
-            ((rmajor, 1), (rminor, 1), (1,0)),
-            ((rmajor, 2), (rminor, 2), (1,1))
-            )
         if major == 'N':
             continue
-        for majreg, minreg, (fridx, ridx) in regkeys:
-            lp_maj = logprobs[majreg]
-            tlo = locobs[fridx][ridx]
-            if minor != 'N':
-                # both major and minor are non-missing
-                lp_min = logprobs[minreg]
-                ll += calc_loc_ll(lp_maj, lp_min, tlo, logpf, logf, log1mf)
-            else:  # major is non-missing, minor is missing, average over the others
-                tmaj, tmin = majreg[0], minreg[0]
-                tridx = minreg[1]
-                i = 0
-                for base in 'ACGT':
-                    if base == tmaj:
-                        continue
-                    minreg = (base, tridx)
-                    lp_min = logprobs[minreg]
-                    avg_ll[i] = calc_loc_ll(
-                            lp_maj, lp_min, tlo, logpf, logf, log1mf)
-                    i += 1
-                assert i == 3
-                ll += logsumexp(avg_ll) - np.log(3.0)
-    return ll
+        locll = calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, logf, log1mf)
+        bamll += locll
+    return bamll
 
+
+def calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, lf, l1mf):
+    rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
+    lp_maj_f1 = logprobs[(major,1)]
+    lp_maj_f2 = logprobs[(major,2)]
+    lp_maj_r1 = logprobs[(rmajor,1)]
+    lp_maj_r2 = logprobs[(rmajor,2)]
+    lo_f1 = locobs[0][0]
+    lo_f2 = locobs[0][1]
+    lo_r1 = locobs[1][0]
+    lo_r2 = locobs[1][1]
+
+    if minor != 'N':
+        lp_min_f1 = logprobs[(minor,1)]
+        lp_min_f2 = logprobs[(minor,2)]
+        lp_min_r1 = logprobs[(rminor,1)]
+        lp_min_r2 = logprobs[(rminor,2)]
+        ll = calc_loc_ll(
+                lp_maj_f1,
+                lp_maj_f2,
+                lp_min_f1,
+                lp_min_f2,
+                lp_maj_r1,
+                lp_maj_r2,
+                lp_min_r1,
+                lp_min_r2,
+                lo_f1,
+                lo_f2,
+                lo_r1,
+                lo_r2,
+                logpf, lf, l1mf)
+    else:   # minor == 'N'
+        avg_ll = np.zeros(3)
+        i = 0
+        for newminor in 'ACGT':
+            if newminor == major:
+                continue
+            # recursive call with non-N minor
+            avg_ll[i] = calc_loc_ll_with_mm(major, newminor, logprobs, locobs, logpf, lf, l1mf)
+            i += 1
+        assert i == 3
+        ll = logsumexp(avg_ll) - np.log(3.0)   # average of 3
+    return ll
 
 def calc_likelihood(
         params, cm, lo, mm, blims, rowlen, freqs, breaks, lf, l1mf, regs,
@@ -152,33 +252,8 @@ def calc_likelihood(
                 for i, locobs in enumerate(bamobs):
                     major, minor = bam_mm[i]
                     rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
-                    regkeys = (
-                        ((major, 1), (minor, 1), (0,0)),
-                        ((major, 2), (minor, 2), (0,1)),
-                        ((rmajor, 1), (rminor, 1), (1,0)),
-                        ((rmajor, 2), (rminor, 2), (1,1))
-                        )
                     if major == 'N':
                         continue
-                    for majreg, minreg, (fridx, ridx) in regkeys:
-                        lp_maj = logprobs[majreg]
-                        tlo = locobs[fridx][ridx]
-                        if minor != 'N':
-                            # both major and minor are non-missing
-                            lp_min = logprobs[minreg]
-                            ll += calc_loc_ll(lp_maj, lp_min, tlo, logpf, lf, l1mf)
-                        else:  # major is non-missing, minor is missing, average over the others
-                            tmaj, tmin = majreg[0], minreg[0]
-                            tridx = minreg[1]
-                            i = 0
-                            for base in 'ACGT':
-                                if base == tmaj:
-                                    continue
-                                minreg = (base, tridx)
-                                lp_min = logprobs[minreg]
-                                avg_ll[i] = calc_loc_ll(
-                                        lp_maj, lp_min, tlo, logpf, lf, l1mf)
-                                i += 1
-                            assert i == 3
-                            ll += logsumexp(avg_ll) - np.log(3.0)
+                    locll = calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, lf, l1mf)
+                    ll += locll
     return ll

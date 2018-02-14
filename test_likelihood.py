@@ -50,6 +50,7 @@ import schwimmbad
 
 pool = schwimmbad.MultiPool(4)
 #pool = schwimmbad.SerialPool()
+#pool = None
 import time; t = time.time()
 print calc_likelihood(pars, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf,
         l1mf, regkeys, pool = pool)
