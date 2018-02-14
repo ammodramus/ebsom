@@ -42,12 +42,17 @@ for i, reg in enumerate(regkeys):
 
 import time; time.time()
 
-npars = len(regkeys)*3*rowlen + 3
-pars = np.zeros(npars)
+nbetas = len(regkeys)*3*rowlen
+betas = np.zeros(nbetas)
+pars = np.concatenate((betas, (ab, ppoly)))
 
 import schwimmbad
 
 pool = schwimmbad.MultiPool(4)
+#pool = schwimmbad.SerialPool()
+import time; t = time.time()
 print calc_likelihood(pars, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf,
         l1mf, regkeys, pool = pool)
+dur = time.time() - t
+print 'took {} seconds'.format(dur)
 pool.close()

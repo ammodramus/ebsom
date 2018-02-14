@@ -5,11 +5,11 @@ cimport numpy as np
 from libc.stdlib cimport malloc
 from libc.string cimport memcpy
 from libc.math cimport log, exp
-from libc.float cimport DBL_MIN
+from libc.float cimport DBL_MAX
 
 cdef double maxd(double *x, size_t n):
     cdef size_t i
-    cdef double mx = DBL_MIN
+    cdef double mx = -1.0*DBL_MAX
     for i in range(n):
         if x[i] > mx:
             mx = x[i]
@@ -62,7 +62,7 @@ def calc_loc_ll(
             memcpy(p_lpf0, p_a0, sizeof(double)*nfreqs)
             tlpa = loclpsa[k]
             tlpA = loclpsA[k]
-            Mp = DBL_MIN
+            Mp = -1.0*DBL_MAX
             for j in range(nj):
                 c = clogf[j] + tlpa
                 d = clog1mf[j] + tlpA

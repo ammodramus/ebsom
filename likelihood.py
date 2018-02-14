@@ -8,7 +8,7 @@ import util as ut
 
 
 @jit
-def calc_loc_ll(
+def calc_loc_ll_wrong(
         lpA, lpa, lo, lpf, logf, log1mf):
     ll = 0.0
     nlo = lo.shape[0]  # number of observations at this locus
@@ -40,6 +40,41 @@ def calc_loc_ll(
             Mp += math.log(s)  # Mp here becomes the ll for this observation
             ll += count*Mp  # multiply by the count of this observation
     return ll
+
+
+@jit
+def calc_loc_ll(
+        lpA, lpa, lo, lpf, logf, log1mf):
+    ll = 0.0
+    nlo = lo.shape[0]  # number of observations at this locus
+    nj = lpf.shape[0]  # number of frequencies
+    Ma = -1e100  # very small number... DBL_MAX is ~1e308
+    a = lpf.copy()
+    for i in range(nj):
+        tlf = logf[i]
+        tl1mf = log1mf[i]
+        # could change the order here... profile
+        fll = 0.0
+        for j in range(nlo):
+            X_idx = lo[j,0] # the index of this row in the covariate matrix and 
+                           # log-probability matrices
+            for k in range(4):
+                count = lo[j,k+1]  # number of observations of this outcome with this covariate row
+                if count <= 0:
+                    continue
+                c = tlf + lpa[X_idx,k]
+                d = tl1mf + lpA[X_idx,k]
+                M = max(c,d)
+                e = M + math.log(math.exp(c-M) + math.exp(d-M))
+                fll += count*e
+        a[i] += fll
+        if a[i] > Ma:
+            Ma = a[i]
+    locll = 0   # logsumexp routine here
+    for el in a:
+        locll += math.exp(el-Ma)
+    locll = math.log(locll) + Ma
+    return locll
 
 def calc_bam_ll(data):
     avg_ll = np.zeros(3)
