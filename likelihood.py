@@ -1,4 +1,5 @@
 from __future__ import print_function
+import datetime
 import math
 import numpy as np
 from numba import jit
@@ -217,7 +218,7 @@ def calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, lf, l1mf):
 
 def calc_likelihood(
         params, cm, lo, mm, blims, rowlen, freqs, breaks, lf, l1mf, regs,
-        pool = None):
+        pool = None, printres = False):
     betas = params[:-2]
     ab, ppoly = params[-2:]
     N = 1000
@@ -256,4 +257,7 @@ def calc_likelihood(
                         continue
                     locll = calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, lf, l1mf)
                     ll += locll
+    if printres:
+        ttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': '
+        print(ttime + str(ll) + '\t' + '\t'.join([str(el) for el in params]))
     return ll
