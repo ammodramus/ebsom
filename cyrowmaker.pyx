@@ -3,27 +3,8 @@ import numpy as np
 cimport cython
 import cython
 
-cdef class CyCovariateRowMaker(object):
-    cdef:
-        bytes consbase
-        int contextlen, ncontexts, dend_roundby, user_ncols, bam_idx, num_bams
-        int context_index
-        bytes thiscons
-        list othercons
-        dict userdefined_rows, bam_idxs
-        public list userdefined_names, bam_names
-        list context
-        bint use_bq, use_mq, use_dend, use_context, use_userdefined, use_bam
-        bint use_contamination
-        public int rowlen
-        cdef double[:,:] ccontam_rows
-        cdef double[:,:] crevcomp_contam_rows
-        cdef dict contextindices
-        cdef object contam_rows
-        cdef object revcomp_contam_rows
-
+cdef class CyCovariateRowMaker:
     def __init__(self,
-                 bytes consbase,
                  int contextlen,
                  int dend_roundby,
                  bytes thiscons = None,
@@ -35,7 +16,6 @@ cdef class CyCovariateRowMaker(object):
                  bint use_mq = True,
                  bint use_dend = True,
                  bint use_bam = True):
-        self.consbase = consbase
         self.contextlen = contextlen
         self.dend_roundby = dend_roundby
         self.thiscons = thiscons
@@ -63,7 +43,7 @@ cdef class CyCovariateRowMaker(object):
                     for b in bases:
                         cp.append(cel + b)
                 c = cp
-            refcontext = consbase * contextlen
+            refcontext = 'A' * contextlen
             self.context = [el for el in c if el != refcontext]
             self.contextindices = {el: i for i, el in enumerate(self.context)}
             self.ncontexts = len(self.context)
@@ -117,11 +97,12 @@ cdef class CyCovariateRowMaker(object):
     
     @cython.boundscheck(False)
     def get_covariate_row(self,
-            bytes consbase, int bq, int mq, bytes context, int dend, int refpos,
+            int bq, int mq, bytes context, int dend, int refpos,
             bytes bam_name, bint reverse):
         cdef:
             int context_index
             np.ndarray[ndim=1,dtype=np.float64_t] row
+
         row = np.zeros(self.rowlen)
         cdef double[:] crow = row
         crow[0] = 1.0   # constant

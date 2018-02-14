@@ -178,27 +178,23 @@ def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses,
     for ref in refs:
         rm[ref] = {}
         for bam_fn in bam_fns:
-            rm[ref][bam_fn] = {}
             cons = consensuses[ref][bam_fn]
             other_cons = [
                     consensuses[ref][fn] for fn in bam_fns if fn != bam_fn]
-            for base in 'ACGT':
-                thisrm = CyCovariateRowMaker(
-                    base,
-                    context_len,
-                    dend_roundby,
-                    cons,
-                    other_cons,
-                    bam_fns,
-                    use_mq = use_mapq)
-                rm[ref][bam_fn][base] = thisrm
-                l = thisrm.rowlen
-                if rowlen is None:
-                    rowlen = l
-                else:
-                    assert rowlen == l, 'multiple row lengths'
-    
-    rowlen = rm[ref][bam_fn][base].rowlen
+            thisrm = CyCovariateRowMaker(
+                context_len,
+                dend_roundby,
+                cons,
+                other_cons,
+                bam_fns,
+                use_mq = use_mapq)
+            rm[ref][bam_fn] = thisrm
+            l = thisrm.rowlen
+            if rowlen is None:
+                rowlen = l
+            else:
+                assert rowlen == l, 'error: multiple row lengths'
+    rowlen = rm[ref][bam_fn].rowlen
     return rm, rowlen
 
 def get_all_majorminor(all_counts):
@@ -223,64 +219,30 @@ def get_all_majorminor(all_counts):
     return all_majorminor
 
 def get_covariate_matrices(rowlen):
-    # need a covariate matrix for each regression (base and read)
-    covmat = {}
-    for base in 'ACGT':
-        for read in [1,2]:
-            key = (base, read)
-            covmat[key] = RegCov(rowlen)
+    covmat = RegCov(rowlen)
     return covmat
 
 
 def get_locus_observations(all_majorminor):
-    # for each ref, bam, and reflocus, need two locobs for major (if it exists)
-    # and two locobs for minor (if it exists)
     locobs = {}
     for ref, refmm in all_majorminor.iteritems():
         locobs[ref] = {}
         for bam, bammm in refmm.iteritems():
             locobs[ref][bam] = []
-            for major, minor in bammm:
-                '''
-                for each locus, need separate observations for major/minor
-                forward/reverse, read1/read2.
-                indexed:
-                [major(0), minor(1)][forward(0), reverse(1)][read 1(0), read2(1)]
-                '''
-                if major == 'N':
-                    locmaj = None
-                else:
-                    locmaj = ((LocObs(),LocObs()), (LocObs(), LocObs()))
-                if minor == 'N':
-                    locmin = None
-                else:
-                    locmin = ((LocObs(),LocObs()), (LocObs(), LocObs()))
-                locobs[ref][bam].append((locmaj, locmin))
+            for i, _ in enumerate(bammm):
+                # indexed [forward(0)/reverse(1)][read1[0]/read2[1]]
+                locobs[ref][bam].append(((LocObs(),LocObs()),(LocObs(),LocObs())))
     return locobs
 
 def collect_covariate_matrices(cov):
-    ret = {}
-    for base in 'ACGT':
-        for read in [1,2]:
-            key = (base, read)
-            ret[key] = cov[key].covariate_matrix()
+    ret = cov.covariate_matrix()
     return ret
 
 def collect_indiv_loc_obs(obs):
     c = lambda x: x.counts()
-    if obs[0] is None:
-        assert obs[1] is None, "major is None (N), but minor isn't..."
-        return (None, None)
-    else:
-        #locmaj = ((LocObs(),LocObs()), (LocObs(), LocObs()))
-        m = obs[0]
-        colmaj = ( (c(m[0][0]), c(m[0][1])), (c(m[1][0]), c(m[1][1])) )
-    if obs[1] is None:
-        colmin = None
-    else:
-        m = obs[1]
-        colmin = ( (c(m[0][0]), c(m[0][1])), (c(m[1][0]), c(m[1][1])) )
-    return (colmaj, colmin)
+    m = obs
+    col = ( (c(m[0][0]), c(m[0][1])), (c(m[1][0]), c(m[1][1])) )
+    return col
 
 
 def collect_loc_obs(locobs):

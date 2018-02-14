@@ -61,7 +61,7 @@ print('getting major-minor')
 all_majorminor = ut.get_all_majorminor(all_counts)
 
 
-# make rowmakers
+# make rowmakers: a dict by ref and bam_fn
 row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len, 
         args.round_distance_by, all_consensuses, not args.no_mapq)
 
@@ -103,5 +103,3 @@ else:
     except ImportError:
         raise ImportError('saving output requires deepdish')
     cm, lo, all_majorminor = dd.io.load(args.load_data_from)
-
-import pdb; pdb.set_trace()
