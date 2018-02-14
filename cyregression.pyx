@@ -23,7 +23,7 @@ cdef void add_numerators(
         else:
             cur_idx += nobs
 
-cdef class Regression(object):
+cdef class Regression:
     cdef:
         public int ncol
         public int blen

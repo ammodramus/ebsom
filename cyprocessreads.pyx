@@ -6,24 +6,54 @@ cimport cyutil as cut
 cimport numpy as np
 import sys
 
-#cpdef void add_observations(
+from cylocobs cimport LocObs
+from cyregcov cimport RegCov
+from cyrowmaker cimport CyCovariateRowMaker
+
+cdef const char *BASES = 'ACGT'
+cdef inline int get_base_idx(bytes obsbase, bytes true):
+    cdef:
+        int i, found
+        char o, t, c
+    o = obsbase[0]
+    t = true[0]
+    if o == t:
+        return 3   # last column
+
+    found = 0
+    for i in range(4):
+        c = BASES[i]
+        if c == o:
+            return i-found
+        if c == t:
+            found = 1
+    return -1
+
+# obs true   seq   found  i  ret
+# A   G      ACTG  0      0  0
+# T   C      AGTC  1      3  2
+
+
 def add_observations(
         AlignedSegment read,
         int mapq,
         int min_bq,
         int context_len,
-        rm,
+        CyCovariateRowMaker rm,
         bytes bam_fn,
         bytes ref,
         bytes consensus,
-        is_candidate,
-        nc_observations,
-        c_observations):
+        covariate_matrix,
+        locus_observations,
+        major_alleles):
     cdef:
         bytes seq, context, obsbase, consbase
-        int readlen, readnum, qpos, q, dend, refpos
+        int readlen, readnum, qpos, q, dend, refpos, cov_idx, base_idx
         unsigned char[:] qualities
         bint reverse
+        RegCov cov
+        LocObs loc
+        
 
     seq = read.seq
     readlen = read.alen  # aligned length
@@ -56,17 +86,22 @@ def add_observations(
             dend = qpos
         if obsbase == 'N' or consbase == 'N':
             continue
-        if consbase not in rm:
-            import sys
-            print(consbase, file=sys.stderr)
-            raise ValueError('not here')
-        row = rm[consbase].get_covariate_row(consbase, q, mapq,
-                context, dend, refpos, bam_fn, reverse)
-        if not is_candidate[refpos]:
-            nc_observations.add(row, consbase, readnum, obsbase)
-        else:
-            c_observations.add(bam_fn, row, ref, refpos, reverse,
-                    consbase, readnum, obsbase)
+        row = rm.get_covariate_row(q, mapq, context, dend, refpos, bam_fn,
+                reverse)
+
+        major = major_alleles[refpos][0]
+        if major == 'N':
+            continue
+        if reverse:
+            major = cut.rev_comp(major)
+        cov_idx = covariate_matrix.set_default(row)
+        base_idx = get_base_idx(obsbase, major)
+        if base_idx < 0 or base_idx > 3:
+            raise ValueError('invalid base')
+        revidx = int(reverse)
+        ridx = readnum-1
+        loc = locus_observations[refpos][revidx][ridx]
+        loc.add_obs(cov_idx, base_idx)
 
 def add_bam_observations(
         AlignmentFile bam,
@@ -75,13 +110,14 @@ def add_bam_observations(
         int min_bq,
         int min_mq,
         int context_len,
-        rm,
+        CyCovariateRowMaker rm,
         bytes bam_fn,
         bytes consensus,
-        is_candidate,
-        nc_observations,
-        c_observations,
-        int update_interval = 1000):
+        covariate_matrix,
+        locus_observations,
+        major_alleles,
+        int update_interval = 1000,
+        max_num_reads = -1):
 
     cdef:
         AlignedSegment read
@@ -93,9 +129,11 @@ def add_bam_observations(
         if mapq < min_mq:
             continue
         add_observations(read, mapq, min_bq, context_len, rm,
-                bam_fn, ref, consensus, is_candidate, nc_observations,
-                c_observations)
+                bam_fn, ref, consensus, covariate_matrix,
+                locus_observations, major_alleles)
         if i % update_interval == 0:
             print('{}, {}: processed {} of {} reads'.format(
                 bam_fn, ref, i, bam.mapped), file = sys.stderr)
         i += 1
+        if i == max_num_reads:
+            break

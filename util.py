@@ -1,12 +1,14 @@
-from __future__ import division
+from __future__ import division, print_function
 import os.path as osp
 import pysam
 #from rowmaker import CovariateRowMaker
-import pyximport; pyximport.install()
 from cyrowmaker import CyCovariateRowMaker
 from rowmaker import CovariateRowMaker
 import numpy as np
 from numba import jit
+from cylocobs import LocObs
+from cyregcov import RegCov
+import os.path
 
 def positive_int(val):
     v = int(val)
@@ -53,19 +55,29 @@ def get_bams(bams_fn):
     bams_fn       file with a list of bams
 
     Returns
-        tuple of bam_fns (list) and bams (dict)
+        tuple of basenames of bam fns (list), a prefix, and bams (dict, key is
+        basename)
     '''
     bam_fns = []
     bams = {}
+    prefix = None
     with open(bams_fn) as fin:
         for line in fin:
-            bam_fn = line.strip()
-            if not osp.isfile(bam_fn):
+            bam_fp = line.strip()
+            head, bam_fn = os.path.split(bam_fp)
+            if prefix is not None:
+                if head != prefix:
+                    raise ValueError('all bam files must be in the same directory')
+            else:
+                prefix = head
+            if not osp.isfile(bam_fp):
                 raise ValueError('could not find bam file {}'.format(bam_fn))
+            if bam_fn in bam_fns:
+                raise ValueError('all BAM filenames must be unique')
             bam_fns.append(bam_fn)
-            bam = pysam.AlignmentFile(bam_fn)
+            bam = pysam.AlignmentFile(bam_fp)
             bams[bam_fn] = bam
-    return bam_fns, bams
+    return prefix, bam_fns, bams
 
 def get_ref_names(refs_input, bams):
     if osp.isfile(refs_input):
@@ -162,22 +174,83 @@ def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses,
         rowlen is the length of a row in the matrix
     '''
     rm = {}
+    rowlen = None
     for ref in refs:
         rm[ref] = {}
         for bam_fn in bam_fns:
-            rm[ref][bam_fn] = {}
             cons = consensuses[ref][bam_fn]
             other_cons = [
                     consensuses[ref][fn] for fn in bam_fns if fn != bam_fn]
-            for base in 'ACGT':
-                rm[ref][bam_fn][base] = CyCovariateRowMaker(
-                    base,
-                    context_len,
-                    dend_roundby,
-                    cons,
-                    other_cons,
-                    bam_fns,
-                    use_mq = use_mapq)
-    
-    rowlen = rm[ref][bam_fn][base].rowlen
+            thisrm = CyCovariateRowMaker(
+                context_len,
+                dend_roundby,
+                cons,
+                other_cons,
+                bam_fns,
+                use_mq = use_mapq)
+            rm[ref][bam_fn] = thisrm
+            l = thisrm.rowlen
+            if rowlen is None:
+                rowlen = l
+            else:
+                assert rowlen == l, 'error: multiple row lengths'
+    rowlen = rm[ref][bam_fn].rowlen
     return rm, rowlen
+
+def get_all_majorminor(all_counts):
+    all_majorminor = {}
+    allbases = np.array(list('ACGT'))
+    for ref, refcounts in all_counts.iteritems():
+        all_majorminor[ref] = {}
+        for bamname, bamcounts in refcounts.iteritems():
+            all_majorminor[ref][bamname] = []
+            thismm = all_majorminor[ref][bamname]
+            # bamcounts is a 2-d np.ndarray, shape (seqlen, 4)
+            # (yes, it does provide zero-counts for position at which
+            #  no reads aligned)
+            for i, order in enumerate(bamcounts.argsort(1)):
+                order = order[::-1]
+                counts = bamcounts[i,order]
+                bases = allbases[order]
+                major = bytes(bases[0]) if counts[0] > 0 else b'N'
+                # note that minor is arbitrarily decided if there's a tie
+                minor = bytes(bases[1]) if counts[1] > 0 else b'N'
+                thismm.append((major, minor))
+    return all_majorminor
+
+def get_covariate_matrices(rowlen):
+    covmat = RegCov(rowlen)
+    return covmat
+
+
+def get_locus_observations(all_majorminor):
+    locobs = {}
+    for ref, refmm in all_majorminor.iteritems():
+        locobs[ref] = {}
+        for bam, bammm in refmm.iteritems():
+            locobs[ref][bam] = []
+            for i, _ in enumerate(bammm):
+                # indexed [forward(0)/reverse(1)][read1[0]/read2[1]]
+                locobs[ref][bam].append(((LocObs(),LocObs()),(LocObs(),LocObs())))
+    return locobs
+
+def collect_covariate_matrices(cov):
+    ret = cov.covariate_matrix()
+    return ret
+
+def collect_indiv_loc_obs(obs):
+    c = lambda x: x.counts()
+    m = obs
+    col = ( (c(m[0][0]), c(m[0][1])), (c(m[1][0]), c(m[1][1])) )
+    return col
+
+
+def collect_loc_obs(locobs):
+    ret = {}
+    for ref, refobs in locobs.iteritems():
+        ret[ref] = {}
+        for bam, bamobs in refobs.iteritems():
+            ret[ref][bam] = []
+            for lobs in bamobs:
+                ret[ref][bam].append(collect_indiv_loc_obs(lobs))
+    return ret
