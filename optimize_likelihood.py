@@ -1,7 +1,11 @@
+from __future__ import print_function
+import schwimmbad
+import scipy.optimize as opt
 import deepdish as dd
 import numpy as np
 import afd
 from likelihood import calc_likelihood
+import numpy.random as npr
 
 N = 1000
 ab = 0.3
@@ -39,18 +43,41 @@ for i, reg in enumerate(regkeys):
     high = rowlen*3*(i+1)
     blims[reg] = (low, high)
 
-import numpy.random as npr
 nbetas = len(regkeys) * 3 * rowlen
-betas = npr.uniform(-0.1, 0.1, nbetas)
-pars = np.concatenate((betas, (ab, ppoly)))
 
-import schwimmbad
-
-pool = schwimmbad.MultiPool(10)
-
-import scipy.optimize as opt
+parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--swarm', action = 'store_true')
+parser.add_argument('--mpi', action = 'store_true')
+parser.add_argument('--num-processes', '-n', type = int, default = 10)
+args = parser.parse_args()
 
 target = lambda x: -1*calc_likelihood(x, cm, lo, all_majorminor, blims, rowlen,
         freqs, breaks, lf, l1mf, regkeys, pool, printres = True)
-opts = {'maxiter': 100000}
-res = opt.minimize(target, pars, method = 'Nelder-Mead', options = opts)
+
+if not args.mpi:
+    pool = schwimmbad.MultiPool(args.num_processes)
+else:
+    pool = schwimmbad.MPIPool()
+    if not pool.is_master():
+        pool.wait()
+        sys.exit(0)
+
+if args.swarm:
+    from pyswarm import pso
+    lbbeta = -15
+    ubbeta = 15
+    lbab = 1e-8
+    ubab = 10
+    lbppoly = 1e-8
+    ubppoly = 0.1
+    lb = [lbbeta]*nbetas + [lbab,lbppoly]
+    ub = [ubbeta]*nbetas + [ubab,ubppoly]
+    xopt, fopt = pso(target, lb, ub)
+
+else:
+    betas = npr.uniform(-0.1, 0.1, nbetas)
+    pars = np.concatenate((betas, (ab, ppoly)))
+    opts = {'maxiter': 100000}
+    res = opt.minimize(target, pars, method = 'Nelder-Mead', options = opts)
+    print(res)
