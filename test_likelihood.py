@@ -65,8 +65,5 @@ pool.close()
 
 if __name__ == '__main__':
     bam = bam_fns[0]
-    for i in range(600):
-        print (i, single_locus_log_likelihood(pars, 'chrM', bam, i, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys))
-
-    print freqs
-    print bam
+    loc = 10
+    print single_locus_log_likelihood(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
