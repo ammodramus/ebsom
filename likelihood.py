@@ -229,9 +229,9 @@ def calc_likelihood(
     for reg in regs:
         low, high = blims[reg]
         b = betas[low:high].reshape((rowlen,-1))
-        Xb = np.dot(X,b)
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
         Xb -= logsumexp(Xb, axis = 1)[:,None]
-        logprobs[reg] = np.column_stack((Xb, np.zeros(Xb.shape[0])))
+        logprobs[reg] = Xb
     chroms = lo.keys()
     ll = 0.0
     avg_ll = np.zeros(3)
@@ -261,3 +261,26 @@ def calc_likelihood(
         ttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': '
         print(ttime + str(ll) + '\t' + '\t'.join([str(el) for el in params]))
     return ll
+
+def single_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
+        rowlen, freqs, breaks, lf, l1mf, regs):
+    betas = params[:-2]
+    ab, ppoly = params[-2:]
+    N = 1000
+    logpf = np.log(afd.get_stationary_distribution_double_beta(
+        freqs, breaks, N, ab, ppoly))
+    logprobs = {}
+    X = cm
+    for reg in regs:
+        low, high = blims[reg]
+        b = betas[low:high].reshape((rowlen,-1))
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+        Xb -= logsumexp(Xb, axis = 1)[:,None]
+        logprobs[reg] = Xb
+    chroms = lo.keys()
+    ll = 0.0
+    avg_ll = np.zeros(3)
+    major, minor = mm[ref][bam][position]
+    locobs = lo[ref][bam][position]
+    locll = calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, lf, l1mf)
+    return locll
