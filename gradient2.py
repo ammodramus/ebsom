@@ -5,34 +5,33 @@ import likelihood as lik
 import afd
 import util as ut
 
-def obs_partial_derivs(obs_idx, X, betas):
+def obs_partial_derivs(obs_idx, X, lP):
     '''
-    returns a vector of partial derivatives, 3*rowlen, in F order, in the same
-    order as betas, where betas[i,j] gives the i'th coefficient for outcome j
+    Returns an array, of shape (3*rowlen,), of
+        \log | P'(Yi|Xi,a,betas_min) |
+    for each outcome, and an array of length (3*rowlen), containing the sign of
+    the derivative.
     '''
 
-    logabsX = np.log(np.abs(x))
-    Xb = np.zeros(4, dtype = np.complex64)
-    np.dot(X.astype(np.complex64),betas.astype(np.complex64), out = Xb[:3])  # can use this 'out=' trick elsewhere instead of column_stack
-    logsumexpXb = logsumexp(Xb)
-
-    ret = np.full(betas.shape, -2.0*logsumexpXb)
-    Xb_j = Xb[obs_idx]
+    rowlen = X.shape[0]
+    logabsX = np.log(np.abs(X))
+    ret = np.zeros((rowlen, 3), order = 'F')
+    sign = np.zeros((rowlen, 3), order = 'F')
+    ret += logabsX[:,np.newaxis]
+    X_sign = (X >= 0)*2 - 1
     for l in range(3):
         if l == obs_idx:
-            # 'logsubtractexp' trick
-            a = logX + XB_j + logsumexpXb
-            b = 2*XB_j + logX
-            M = np.maximum(a,b)
-
-            ret[:,l] += M + np.log(np.exp(a-M) - np.exp(b-M))
+            # logsumexp here would be equivalent to this
+            ret[:,l] += np.log(1-np.exp(lP[l]))
+            sign[:,l] = X_sign
         else:
-            ret[:,l] += Xb[l] + Xb_j + logX
-
-    import pdb; pdb.set_trace()
+            ret[:,l] += lP[l]
+            sign[:,l] = -1*X_sign
 
     ret = ret.flatten(order = 'F')
-    return ret
+    sign = sign.flatten(order = 'F')
+    return ret, sign
+
 
 def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
     '''
@@ -70,8 +69,6 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     # logprobs. The key will be the index in locobs (i.e., the first column in
     # locobs)
     ###########################################################################
-    lfcol = lf[:,np.newaxis]
-    l1mfcol = l1mf[:,np.newaxis]
 
     # log P(Y). Note that a, above, corresponds to minor allele
     lpa_F1 = logprobs[(minor, 1)]
@@ -88,25 +85,34 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     #     c1 = \sum_{i reads} \log ( f P(Yi|Xi,a,th) + (1-f)P(Yi|Xi,A,th) )
     #
     # c1 requires no logsumexp trick outside of considering each individual
-    # read. The other sum, in log u, is exponentiated (that is, it's a
-    # logsumexp instead), so have to store intermediate results in an array.
-    # Also, each intermediate result will be an array (of partial derivatives),
-    # so the intermediate results will actually be stored in a matrix S. There
-    # will be an S, Smaj, for the major-allele parameters (betas) and an S for
-    # the minor allele parameters, Smin
+    # read.
     #
-    # Everything must be done once for each f, unless a three-dimensional
-    # matrix is formed. Let's do the 3-D matrix.
-    # 
-    # The 3D matrices Smin and Smaj will be in C order, and priority should be
-    # given to operations over the reads, so that will be the final column.
-    # Then, operations over f, then operations over the parameter, beta, so the
-    # dimensions will be (nbetas, nfs, nobs)
+    # For a given f and a given minor-allele regression parameter (indexed i),
+    # have to keep a list of values of
     #
-    # But wait! There's more. P'() will be zero except within a regression
-    # (possibly distinct for F1, F2, R1, R2). Also either P'(Yi|Xi,a,th) or
-    # P'(Yi|Xi,A,th) will be zero. But still, can sum over all reads, with
-    # zeros and all.
+    #     \log f + \log |DP(Yi|Xi,a)| - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A))
+    #
+    # where DP(Yi,Xi,a) is negative, and a list of the values
+    #
+    #     \log f + \log DP(Yi|Xi,a) - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A))
+    #
+    # where DP(Yi,Xi,a) is positive.
+    #
+    # This also needs to be kept for the major-allele regression, but with
+    #
+    #     \log (1-f) + \log |DP(Yi|Xi,A)| - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A)) 
+    # and
+    #
+    #     \log (1-f) + \log DP(Yi|Xi,A) - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A)) 
+    #
+    # respectively (note a -> A).
+    #
+    # The number of positive and negative values in these lists will be the
+    # same for each f, but it will differ from parameter to parameter. So there
+    # will be two counts, count_neg, and count_pos, for each parameter. This
+    # means that there needs to be two arrays, S_pos, and S_neg, with shape
+    # (n_fs, nobs) for each parameter. Store these in a list, and have
+    # count_neg and count_pos in an array.
     ###########################################################################
 
     nobs = (
@@ -120,11 +126,15 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     nbetasperreg = 3*rowlen
     nbetas = nregs*nbetasperreg
     nfs = lf.shape[0]
-    S = np.zeros((nbetas, nfs, nobs))
 
-    c1 = np.zeros(nfs)
+    S_neg = [np.repeat(lf, nobs).reshape((-1,nobs)) for i in range(nbetas)]
+    S_pos = [np.repeat(lf, nobs).reshape((-1,nobs)) for i in range(nbetas)]
+    count_neg = np.zeros(nbetas, dtype = np.int32)
+    count_pos = np.zeros(nbetas, dtype = np.int32)
 
-    cur_obs = 0
+    # c1 := \log P(f) + \sum_i \log (fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) )
+    c1 = lpf.copy()
+
     # forward, 1
     lo = locobs[0][0] # locobs for forward, 1
     nlo = lo.shape[0]
@@ -145,24 +155,444 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
             c2 = lf + tlpa
             c3 = l1mf + tlpA
             M = np.maximum(c2,c3)
-            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A))
-            c4 = M + np.log(np.exp(c2) + np.exp(c3))
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
             c1 += count*c4  # the count is rolled into the sum here
-
-            # add the vector of c4's too
-            S[:,:,cur_obs:cur_obs+count] += c4[np.newaxis,:,np.newaxis]
 
             Xi = cm[lp_idx]
             assert Xi.shape[0] == rowlen
 
-            pp_minor = obs_partial_derivs(j, Xi, betas_min) 
-            # calculate log( f P'(Yi|Xi,a,lowbetas) ), add it to S[lowa:higha,:,cur_obs:cur_obs+count]
-            pp_major = obs_partial_derivs(j, Xi, betas_maj)
-            # calculate log( (1-f) P'(Yi|Xi,A,highbetas) ), add it to S[lowA:highA,:,cur_obs:cur_obs+count]
+            ################################################
+            # pp_min will be 
+            # 
+            #    \log | P'(Yi|Xi,a,betas_min) | for each of the parameters.
+            #
+            # and sign_min will be the sign of this derivative for each
+            # parameter (i.e., it will be a vector of length nbetasperreg)
 
-            cur_obs += count
-            import pdb; pdb.set_trace()
+            pp_min, sign_min = obs_partial_derivs(j, Xi, lpa[lp_idx]) 
+            assert sign_min.shape[0] == nbetasperreg
+            assert pp_min.shape[0] == nbetasperreg
+            pp_maj, sign_maj = obs_partial_derivs(j, Xi, lpA[lp_idx])
 
+            assert pp_min.shape[0] == 3*rowlen
+
+            for i in range(pp_min.shape[0]):
+                bidx = lowa+i
+                pp, sign = pp_min[i], sign_min[i]
+                if sign > 0:
+                    S_pos[bidx][:,count_pos[bidx]:count_pos[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_pos[bidx] += count
+                else:
+                    S_neg[bidx][:,count_neg[bidx]:count_neg[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_neg[bidx] += count
+
+    lo = locobs[0][1] # locobs for forward, 2
+    nlo = lo.shape[0]
+    lpA = logprobs[(major,2)]
+    lpa = logprobs[(minor,2)]
+    lowA, highA = blims[(major, 2)]
+    lowa, higha = blims[(minor, 2)]
+    betas_min = params[lowa:higha].reshape((-1,3))
+    betas_maj = params[lowA:highA].reshape((-1,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+            Xi = cm[lp_idx]
+            assert Xi.shape[0] == rowlen
+
+            ################################################
+            # pp_min will be 
+            # 
+            #    \log | P'(Yi|Xi,a,betas_min) | for each of the parameters.
+            #
+            # and sign_min will be the sign of this derivative for each
+            # parameter (i.e., it will be a vector of length nbetasperreg)
+
+            pp_min, sign_min = obs_partial_derivs(j, Xi, lpa[lp_idx]) 
+            assert sign_min.shape[0] == nbetasperreg
+            assert pp_min.shape[0] == nbetasperreg
+            pp_maj, sign_maj = obs_partial_derivs(j, Xi, lpA[lp_idx])
+
+            assert pp_min.shape[0] == 3*rowlen
+
+            for i in range(pp_min.shape[0]):
+                bidx = lowa+i
+                pp, sign = pp_min[i], sign_min[i]
+                if sign > 0:
+                    S_pos[bidx][:,count_pos[bidx]:count_pos[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_pos[bidx] += count
+                else:
+                    S_neg[bidx][:,count_neg[bidx]:count_neg[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_neg[bidx] += count
+
+    lo = locobs[1][0] # locobs for reverse, 1
+    nlo = lo.shape[0]
+    lpA = logprobs[(rmajor,1)]
+    lpa = logprobs[(rminor,1)]
+    lowA, highA = blims[(rmajor, 1)]
+    lowa, higha = blims[(rminor, 1)]
+    betas_min = params[lowa:higha].reshape((-1,3))
+    betas_maj = params[lowA:highA].reshape((-1,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+            Xi = cm[lp_idx]
+            assert Xi.shape[0] == rowlen
+
+            ################################################
+            # pp_min will be 
+            # 
+            #    \log | P'(Yi|Xi,a,betas_min) | for each of the parameters.
+            #
+            # and sign_min will be the sign of this derivative for each
+            # parameter (i.e., it will be a vector of length nbetasperreg)
+
+            pp_min, sign_min = obs_partial_derivs(j, Xi, lpa[lp_idx]) 
+            assert sign_min.shape[0] == nbetasperreg
+            assert pp_min.shape[0] == nbetasperreg
+            pp_maj, sign_maj = obs_partial_derivs(j, Xi, lpA[lp_idx])
+
+            assert pp_min.shape[0] == 3*rowlen
+
+            for i in range(pp_min.shape[0]):
+                bidx = lowa+i
+                pp, sign = pp_min[i], sign_min[i]
+                if sign > 0:
+                    S_pos[bidx][:,count_pos[bidx]:count_pos[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_pos[bidx] += count
+                else:
+                    S_neg[bidx][:,count_neg[bidx]:count_neg[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_neg[bidx] += count
+
+    lo = locobs[1][1] # locobs for reverse, 2
+    nlo = lo.shape[0]
+    lpA = logprobs[(rmajor,2)]
+    lpa = logprobs[(rminor,2)]
+    lowA, highA = blims[(rmajor, 2)]
+    lowa, higha = blims[(rminor, 2)]
+    betas_min = params[lowa:higha].reshape((-1,3))
+    betas_maj = params[lowA:highA].reshape((-1,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+            Xi = cm[lp_idx]
+            assert Xi.shape[0] == rowlen
+
+            ################################################
+            # pp_min will be 
+            # 
+            #    \log | P'(Yi|Xi,a,betas_min) | for each of the parameters.
+            #
+            # and sign_min will be the sign of this derivative for each
+            # parameter (i.e., it will be a vector of length nbetasperreg)
+
+            pp_min, sign_min = obs_partial_derivs(j, Xi, lpa[lp_idx]) 
+            assert sign_min.shape[0] == nbetasperreg
+            assert pp_min.shape[0] == nbetasperreg
+            pp_maj, sign_maj = obs_partial_derivs(j, Xi, lpA[lp_idx])
+
+            assert pp_min.shape[0] == 3*rowlen
+
+            for i in range(pp_min.shape[0]):
+                bidx = lowa+i
+                pp, sign = pp_min[i], sign_min[i]
+                if sign > 0:
+                    S_pos[bidx][:,count_pos[bidx]:count_pos[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_pos[bidx] += count
+                else:
+                    S_neg[bidx][:,count_neg[bidx]:count_neg[bidx]+count] = (
+                            pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                    count_neg[bidx] += count
+
+    ##### now, process ####
+
+    # for each f and each parameter, we need to logsumexp the positive and the
+    # negative. alpha is the logsumexp of the positive, delta is the logsumexp
+    # of the negative
+
+    alpha = np.zeros((nbetas, nfs), order = 'C')
+    delta = np.zeros((nbetas, nfs), order = 'C')
+    for i in range(nbetas):
+        for j in range(nfs):
+            if count_pos[i] > 0:
+                alpha[i,j] = logsumexp(S_pos[i][j,:count_pos[i]])
+            else:
+                alpha[i,j] = -np.inf
+            if count_neg[i] > 0:
+                delta[i,j] = logsumexp(S_neg[i][j,:count_neg[i]])
+            else:
+                delta[i,j] = -np.inf
+
+    log_max_ad = np.maximum(alpha, delta)
+    log_min_ad = np.minimum(alpha, delta)
+
+    sign_ad = (alpha > delta)*2-1
+
+    M = log_max_ad
+    # TODO define this, and check the logic
+    logabsbf = M + np.log(1-np.exp(log_min_ad-log_max_ad))
+    logabsbf[((~np.isfinite(log_max_ad)) & (~np.isfinite(log_min_ad)))] = (
+            -np.inf)
+    # testing suggests that logsumexp trick may not be necessary here.
+    #logabsbf2 = np.log(np.exp(log_max_ad) - np.exp(log_min_ad))
+
+    # for each parameter, need an array of the values of log a_f + log b_f,
+    # where b_f is positive, and the values of log a_f + log |b_f|, where b_f
+    # is negative. logsumexp each of these, exponentiate, and subtract
+
+    # a_f is defined as log_f + \sum_i log( fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) ), or
+    # c1
+
+    logsumexpaf = logsumexp(c1)
+    
+    bf_pos = np.zeros(nbetas)
+    bf_neg = np.zeros(nbetas)
+
+    for i in range(nbetas):
+        pos = sign_ad[i] > 0
+        if np.any(pos):
+            bf_pos[i] = logsumexp(logabsbf[i,pos] + c1[pos]) - logsumexpaf
+        else:
+            # TODO check the logic here
+            bf_pos[i] = -np.inf
+        if np.any(~pos):
+            bf_neg[i] = logsumexp(logabsbf[i,~pos] + c1[~pos]) - logsumexpaf
+        else:
+            bf_neg[i] = -np.inf
+
+    
+    ret = np.exp(bf_pos) - np.exp(bf_neg)
+    return ret
+
+
+def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
+    '''
+    going to iterate through f's, iterating through reads for each f.
+
+    For each f, then need to calculate for each read (iterating over
+    F1,F2,R1,R2):
+
+        \log(f P(Y_i | X_i, a, params) + (1-f) P(Y_i | X_i, A, params),
+    since this quantity is used three times for each read.
+
+    the easiest way to do this is to populate a matrix the same size as
+    logprobs with the appropriate mixture or log-mixture for each f, then read
+    from that table. This will be slow, though, since this will calculate the
+    probability for many more observations than are found at this locus.
+    Instead, keep in a dictionary, indexed by the index in locobs?
+
+    might also be able to do the same for P'(y...), etc.
+    '''
+    rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
+
+    ###########################################################################
+    # a := \log f + \log P(Y_i | X_i, a, params)
+    # b := \log (1-f) + \log P(Y_i | X_i, A, params)
+    #
+    # Need to calculate a and b for each F1,F2,R1,R2. Calculations will be done
+    # using logsumexp trick instead of direct calculation. For each observation
+    # in locobs, will store a and b in matrixes (say, A and B), where A[i,j] is
+    # the value of a for the i'th f and the j'th outcome of the four possible,
+    # corresponding to the entries in logprobs. B is similarly defined.
+    #
+    # Each matrix will be stored in a dict, since we want to calculate this
+    # matrix only for the observations at this locus, not all the entries in
+    # logprobs. The key will be the index in locobs (i.e., the first column in
+    # locobs)
+    ###########################################################################
+
+    ###########################################################################
+    # keep track of, for each f: 
+    #     c1 = \sum_{i reads} \log ( f P(Yi|Xi,a,th) + (1-f)P(Yi|Xi,A,th) )
+    #
+    # c1 requires no logsumexp trick outside of considering each individual
+    # read.
+    #
+    # For a given f and a given minor-allele regression parameter (indexed i),
+    # have to keep a list of values of
+    #
+    #     \log f + \log |DP(Yi|Xi,a)| - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A))
+    #
+    # where DP(Yi,Xi,a) is negative, and a list of the values
+    #
+    #     \log f + \log DP(Yi|Xi,a) - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A))
+    #
+    # where DP(Yi,Xi,a) is positive.
+    #
+    # This also needs to be kept for the major-allele regression, but with
+    #
+    #     \log (1-f) + \log |DP(Yi|Xi,A)| - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A)) 
+    # and
+    #
+    #     \log (1-f) + \log DP(Yi|Xi,A) - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A)) 
+    #
+    # respectively (note a -> A).
+    #
+    # The number of positive and negative values in these lists will be the
+    # same for each f, but it will differ from parameter to parameter. So there
+    # will be two counts, count_neg, and count_pos, for each parameter. This
+    # means that there needs to be two arrays, S_pos, and S_neg, with shape
+    # (n_fs, nobs) for each parameter. Store these in a list, and have
+    # count_neg and count_pos in an array.
+    ###########################################################################
+
+    rowlen = cm.shape[1]
+    nregs = len(blims.keys())
+    nbetasperreg = 3*rowlen
+    nbetas = nregs*nbetasperreg
+    nfs = lf.shape[0]
+
+    c1 = lpf.copy()
+
+    # forward, 1
+    lo = locobs[0][0] # locobs for forward, 1
+    nlo = lo.shape[0]
+    lpA = logprobs[(major,1)]
+    lpa = logprobs[(minor,1)]
+    lowA, highA = blims[(major, 1)]
+    lowa, higha = blims[(minor, 1)]
+    betas_min = params[lowa:higha].reshape((rowlen,3))
+    betas_maj = params[lowA:highA].reshape((rowlen,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+    lo = locobs[0][1] # locobs for forward, 2
+    nlo = lo.shape[0]
+    lpA = logprobs[(major,2)]
+    lpa = logprobs[(minor,2)]
+    lowA, highA = blims[(major, 2)]
+    lowa, higha = blims[(minor, 2)]
+    betas_min = params[lowa:higha].reshape((-1,3))
+    betas_maj = params[lowA:highA].reshape((-1,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+
+    lo = locobs[1][0] # locobs for reverse, 1
+    nlo = lo.shape[0]
+    lpA = logprobs[(rmajor,1)]
+    lpa = logprobs[(rminor,1)]
+    lowA, highA = blims[(rmajor, 1)]
+    lowa, higha = blims[(rminor, 1)]
+    betas_min = params[lowa:higha].reshape((-1,3))
+    betas_maj = params[lowA:highA].reshape((-1,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+
+    lo = locobs[1][1] # locobs for reverse, 2
+    nlo = lo.shape[0]
+    lpA = logprobs[(rmajor,2)]
+    lpa = logprobs[(rminor,2)]
+    lowA, highA = blims[(rmajor, 2)]
+    lowa, higha = blims[(rminor, 2)]
+    betas_min = params[lowa:higha].reshape((-1,3))
+    betas_maj = params[lowA:highA].reshape((-1,3))
+    for i in range(nlo):
+        lp_idx = lo[i,0]
+        for j, count in enumerate(lo[i,1:]):
+            if count <= 0:   # should never be < 0
+                continue
+            tlpA = lpA[lp_idx,j]
+            tlpa = lpa[lp_idx,j]
+            # calculate the summands to add to c1
+            c2 = lf + tlpa
+            c3 = l1mf + tlpA
+            M = np.maximum(c2,c3)
+            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
+            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
+            c1 += count*c4  # the count is rolled into the sum here
+
+
+    ##### now, process ####
+
+    # for each f and each parameter, we need to logsumexp the positive and the
+    # negative. alpha is the logsumexp of the positive, delta is the logsumexp
+    # of the negative
+
+    logsumexpaf = logsumexp(c1)
+    
+    return logsumexpaf
 
 
 def gradient(params, ref, bam, position, cm, lo, mm, blims,
@@ -183,9 +613,28 @@ def gradient(params, ref, bam, position, cm, lo, mm, blims,
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb
 
-    grad = np.zeros_like(params)
-
     locobs = lo[ref][bam][position]
     major, minor = mm[ref][bam][position]
 
     return loc_gradient(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 
+
+def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
+        rowlen, freqs, breaks, lf, l1mf, regs):
+    betas = params[:-2]
+    ab, ppoly = params[-2:]
+    N = 1000
+    logpf = np.log(afd.get_stationary_distribution_double_beta(
+        freqs, breaks, N, ab, ppoly))
+    logprobs = {}
+    X = cm
+    for reg in regs:
+        low, high = blims[reg]
+        b = betas[low:high].reshape((rowlen,-1))
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+        Xb -= logsumexp(Xb, axis = 1)[:,None]
+        logprobs[reg] = Xb
+
+    locobs = lo[ref][bam][position]
+    major, minor = mm[ref][bam][position]
+
+    return loc_ll(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 

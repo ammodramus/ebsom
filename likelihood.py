@@ -1,4 +1,4 @@
-from __future__ import print_function
+#from __future__ import print_function
 import datetime
 import math
 import numpy as np
@@ -78,14 +78,14 @@ def calc_loc_ll_wrong2(
     locll = math.log(locll) + Ma
     return locll
 
-@jit
+#@jit
 def calc_loc_ll_cond_f_and_fr(lpA,  # the "major" log-probabilities for this orientation and read num.
                           lpa,      # " ", for minor
                           lo,     # the observations for this 
                           logf,   # now a double
                           log1mf):  # this also a double
     fll = 0.0
-    Ma = -1e100  # very small number... DBL_MAX is ~1e308
+    Ma = -1e200  # very small number... DBL_MAX is ~1e308
     nlo = lo.shape[0]
     for j in range(nlo):
         X_idx = lo[j,0] # the index of this row in the covariate matrix and 
@@ -102,7 +102,7 @@ def calc_loc_ll_cond_f_and_fr(lpA,  # the "major" log-probabilities for this ori
     return fll
 
 
-@jit
+#@jit
 def calc_loc_ll(lp_maj_f1,
                 lp_maj_f2,
                 lp_min_f1,
@@ -123,8 +123,9 @@ def calc_loc_ll(lp_maj_f1,
     for i in range(nj):
         tlf = lf[i]
         tl1mf = l1mf[i]
-        tot_fll = 0.0
+
         # calculate the fll's for different fr/12's
+        tot_fll = 0.0
         tot_fll += calc_loc_ll_cond_f_and_fr(
                 lp_maj_f1,
                 lp_min_f1,
@@ -149,13 +150,16 @@ def calc_loc_ll(lp_maj_f1,
                 lo_r2,
                 tlf,
                 tl1mf)
+        # add the contribution of the reads to log P(f)
         a[i] += tot_fll
         if a[i] > Ma:
             Ma = a[i]
-    locll = 0   # logsumexp routine here
+
+    # logsumexp over a now
+    S = 0.0
     for el in a:
-        locll += math.exp(el-Ma)
-    locll = math.log(locll) + Ma
+        S += math.exp(el-Ma)
+    locll = Ma + np.log(S)
     return locll
 
 
@@ -248,7 +252,7 @@ def calc_likelihood(
 
         else:
             for bam_fn, bamobs in chromobs.iteritems():
-                print('working on', bam_fn)
+                #print('working on', bam_fn)
                 bam_mm = chrom_mm[bam_fn]
                 for i, locobs in enumerate(bamobs):
                     major, minor = bam_mm[i]
@@ -259,7 +263,7 @@ def calc_likelihood(
                     ll += locll
     if printres:
         ttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': '
-        print(ttime + str(ll) + '\t' + '\t'.join([str(el) for el in params]))
+        print ttime + str(ll) + '\t' + '\t'.join([str(el) for el in params])
     return ll
 
 def single_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
@@ -278,8 +282,6 @@ def single_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb
     chroms = lo.keys()
-    ll = 0.0
-    avg_ll = np.zeros(3)
     major, minor = mm[ref][bam][position]
     locobs = lo[ref][bam][position]
     locll = calc_loc_ll_with_mm(major, minor, logprobs, locobs, logpf, lf, l1mf)
