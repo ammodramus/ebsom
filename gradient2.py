@@ -74,16 +74,6 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     # locobs)
     ###########################################################################
 
-    # log P(Y). Note that a, above, corresponds to minor allele
-    lpa_F1 = logprobs[(minor, 1)]
-    lpA_F1 = logprobs[(major, 1)]
-    lpa_F2 = logprobs[(minor, 2)]
-    lpA_F2 = logprobs[(major, 2)]
-    lpa_R1 = logprobs[(rminor, 1)]
-    lpA_R1 = logprobs[(rmajor, 1)]
-    lpa_R2 = logprobs[(rminor, 2)]
-    lpA_R2 = logprobs[(rmajor, 2)]
-
     ###########################################################################
     # keep track of, for each f: 
     #     c1 = \sum_{i reads} \log ( f P(Yi|Xi,a,th) + (1-f)P(Yi|Xi,A,th) )
@@ -140,27 +130,19 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     lpAs = [logprobs[key] for key in major_keys]
     lowAs = [blims[key][0] for key in major_keys]
     highAs = [blims[key][1] for key in major_keys]
-    betas_maj = [params[lowA:highA].reshape((-1,3)) for lowA, highA in zip(
+    betas_maj = [params[lowA:highA].reshape((rowlen,3), order = 'F') for lowA, highA in zip(
         lowAs, highAs)]
 
     minor_keys = [(minor,1), (minor,2), (rminor,1), (rminor,2)]
     lpas = [logprobs[key] for key in minor_keys]
     lowas = [blims[key][0] for key in minor_keys]
     highas = [blims[key][1] for key in minor_keys]
-    betas_min = [params[lowa:higha].reshape((-1,3)) for lowa, higha in zip(
+    betas_min = [params[lowa:higha].reshape((rowlen,3), order = 'F') for lowa, higha in zip(
         lowas, highas)]
 
     S_neg = np.zeros((nbetas, nfs, nobs))
     S_pos = np.zeros((nbetas, nfs, nobs))
-    for key in minor_keys:
-        low, high = blims[key]
-        S_neg[low:high,:,:] = lf[:,np.newaxis]
-        S_pos[low:high,:,:] = lf[:,np.newaxis]
 
-    for key in major_keys:
-        low, high = blims[key]
-        S_neg[low:high,:,:] = l1mf[:,np.newaxis]
-        S_pos[low:high,:,:] = l1mf[:,np.newaxis]
     count_neg = np.zeros(nbetas, dtype = np.int32)
     count_pos = np.zeros(nbetas, dtype = np.int32)
 
@@ -210,11 +192,11 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
                     pp, sign = pp_min[l], sign_min[l]
                     if sign > 0:
                         S_pos[bidx,:,count_pos[bidx]:count_pos[bidx]+count] = (
-                                pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                                lf + pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
                         count_pos[bidx] += count
                     else:
                         S_neg[bidx,:,count_neg[bidx]:count_neg[bidx]+count] = (
-                                pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                                lf + pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
                         count_neg[bidx] += count
 
                 pp_maj, sign_maj = obs_partial_derivs(k, Xj, lpA[lp_idx])
@@ -224,12 +206,12 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
                     bidx = lowA+l
                     pp, sign = pp_maj[l], sign_maj[l]
                     if sign > 0:
-                        S_pos[bidx][:,count_pos[bidx]:count_pos[bidx]+count] = (
-                                pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                        S_pos[bidx, :,count_pos[bidx]:count_pos[bidx]+count] = (
+                                l1mf + pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
                         count_pos[bidx] += count
                     else:
-                        S_neg[bidx][:,count_neg[bidx]:count_neg[bidx]+count] = (
-                                pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
+                        S_neg[bidx, :,count_neg[bidx]:count_neg[bidx]+count] = (
+                                l1mf + pp - c4)[:,np.newaxis]  # note, adding c4 (def'd above) here.
                         count_neg[bidx] += count
 
 
@@ -262,8 +244,6 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     logabsbf = M + np.log(1-np.exp(log_min_ad-log_max_ad))
     logabsbf[((~np.isfinite(log_max_ad)) & (~np.isfinite(log_min_ad)))] = (
             -np.inf)
-    # testing suggests that logsumexp trick may not be necessary here.
-    #logabsbf2 = np.log(np.exp(log_max_ad) - np.exp(log_min_ad))
 
     # for each parameter, need an array of the values of log a_f + log b_f,
     # where b_f is positive, and the values of log a_f + log |b_f|, where b_f
@@ -277,12 +257,15 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     bf_pos = np.zeros(nbetas)
     bf_neg = np.zeros(nbetas)
 
+    assert logabsbf.shape[0] == nbetas
+    assert sign_ad.shape[0] == nbetas
+
     for i in range(nbetas):
         pos = sign_ad[i] > 0
         if np.any(pos):
             bf_pos[i] = logsumexp(logabsbf[i,pos] + c1[pos]) - logsumexpaf
         else:
-            # TODO check the logic here
+            # TODO check the logic here, with the -np.inf
             bf_pos[i] = -np.inf
         if np.any(~pos):
             bf_neg[i] = logsumexp(logabsbf[i,~pos] + c1[~pos]) - logsumexpaf
@@ -380,8 +363,8 @@ def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
     lpa = logprobs[(minor,1)]
     lowA, highA = blims[(major, 1)]
     lowa, higha = blims[(minor, 1)]
-    betas_min = params[lowa:higha].reshape((rowlen,3))
-    betas_maj = params[lowA:highA].reshape((rowlen,3))
+    betas_min = params[lowa:higha].reshape((rowlen,3), order = 'F')
+    betas_maj = params[lowA:highA].reshape((rowlen,3), order = 'F')
     for i in range(nlo):
         lp_idx = lo[i,0]
         for j, count in enumerate(lo[i,1:]):
@@ -403,8 +386,8 @@ def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
     lpa = logprobs[(minor,2)]
     lowA, highA = blims[(major, 2)]
     lowa, higha = blims[(minor, 2)]
-    betas_min = params[lowa:higha].reshape((-1,3))
-    betas_maj = params[lowA:highA].reshape((-1,3))
+    betas_min = params[lowa:higha].reshape((-1,3), order = 'F')
+    betas_maj = params[lowA:highA].reshape((-1,3), order = 'F')
     for i in range(nlo):
         lp_idx = lo[i,0]
         for j, count in enumerate(lo[i,1:]):
@@ -427,8 +410,8 @@ def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
     lpa = logprobs[(rminor,1)]
     lowA, highA = blims[(rmajor, 1)]
     lowa, higha = blims[(rminor, 1)]
-    betas_min = params[lowa:higha].reshape((-1,3))
-    betas_maj = params[lowA:highA].reshape((-1,3))
+    betas_min = params[lowa:higha].reshape((-1,3), order = 'F')
+    betas_maj = params[lowA:highA].reshape((-1,3), order = 'F')
     for i in range(nlo):
         lp_idx = lo[i,0]
         for j, count in enumerate(lo[i,1:]):
@@ -451,8 +434,8 @@ def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
     lpa = logprobs[(rminor,2)]
     lowA, highA = blims[(rmajor, 2)]
     lowa, higha = blims[(rminor, 2)]
-    betas_min = params[lowa:higha].reshape((-1,3))
-    betas_maj = params[lowA:highA].reshape((-1,3))
+    betas_min = params[lowa:higha].reshape((-1,3), order = 'F')
+    betas_maj = params[lowA:highA].reshape((-1,3), order = 'F')
     for i in range(nlo):
         lp_idx = lo[i,0]
         for j, count in enumerate(lo[i,1:]):
@@ -493,7 +476,7 @@ def gradient(params, ref, bam, position, cm, lo, mm, blims,
     X = cm
     for reg in regs:
         low, high = blims[reg]
-        b = betas[low:high].reshape((rowlen,-1))
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
         Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb
@@ -514,7 +497,7 @@ def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
     X = cm
     for reg in regs:
         low, high = blims[reg]
-        b = betas[low:high].reshape((rowlen,-1))
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
         Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb

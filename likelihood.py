@@ -232,7 +232,7 @@ def calc_likelihood(
     X = cm
     for reg in regs:
         low, high = blims[reg]
-        b = betas[low:high].reshape((rowlen,-1))
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
         Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb
@@ -277,7 +277,7 @@ def single_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
     X = cm
     for reg in regs:
         low, high = blims[reg]
-        b = betas[low:high].reshape((rowlen,-1))
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
         Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb
