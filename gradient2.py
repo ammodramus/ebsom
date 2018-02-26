@@ -6,6 +6,7 @@ import afd
 import util as ut
 
 
+@jit
 def obs_partial_derivs(obs_idx, X, lP):
     '''
     Returns an array, of shape (3*rowlen,), of
@@ -463,6 +464,60 @@ def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
     return logsumexpaf
 
 
+def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
+        lf, l1mf):
+    if minor != 'N':
+        raise ValueError('calling Nminor gradient when minor is not N')
+    lls = []
+    llps = []
+    for minor in 'ACGT':
+        if minor == major:
+            continue
+        # TODO
+        # can change gradient function so that it returns both gradient and ll
+        lls.append(loc_ll(params, cm, logprobs, locobs, major, minor, blims,
+            lpf, lf, l1mf))
+        llps.append(loc_gradient(params, cm, logprobs, locobs, major, minor,
+            blims, lpf, lf, l1mf))
+
+    nparams = llps[0].shape[0]
+    lsell = logsumexp(lls)
+
+    pos = np.zeros((nparams, 4))
+    num_pos = np.zeros(nparams, dtype = np.int32)
+    neg = np.zeros((nparams, 4))
+    num_neg = np.zeros(nparams, dtype = np.int32)
+
+    pos = np.zeros(4)
+    neg = np.zeros(4)
+
+    nlls = len(lls)
+
+    ret = np.zeros(nparams)
+
+    for i in range(nparams):
+        pos[:] = 0.0
+        neg[:] = 0.0
+        num_pos = 0
+        num_neg = 0
+        for j in range(nlls):
+            llp = llps[j][i]
+            ll = lls[j]
+            logabsllp = np.log(np.abs(llp))
+            logsummand = ll + logabsllp - lsell
+            if llp >= 0:
+                pos[num_pos] = logsummand
+                num_pos += 1
+            else:
+                neg[num_neg] = logsummand
+                num_neg += 1
+
+        a = logsumexp(pos[:num_pos]) if num_pos > 0 else -np.inf
+        b = logsumexp(neg[:num_neg]) if num_neg > 0 else -np.inf
+        ret[i] = np.exp(a) - np.exp(b)
+    return ret
+
+
 def gradient(params, ref, bam, position, cm, lo, mm, blims,
         rowlen, freqs, breaks, lf, l1mf, regs):
 
@@ -484,7 +539,11 @@ def gradient(params, ref, bam, position, cm, lo, mm, blims,
     locobs = lo[ref][bam][position]
     major, minor = mm[ref][bam][position]
 
-    return loc_gradient(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 
+    if minor != 'N':
+        return loc_gradient(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 
+    else:
+        return loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf)
+
 
 def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
         rowlen, freqs, breaks, lf, l1mf, regs):
@@ -505,4 +564,15 @@ def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
     locobs = lo[ref][bam][position]
     major, minor = mm[ref][bam][position]
 
-    return loc_ll(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 
+    if minor != 'N':
+        return loc_ll(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 
+    else:
+        assert minor == 'N'
+        loc_lls = []
+        for newminor in 'ACGT':
+            if newminor == major:
+                continue
+            loc_lls.append(loc_ll(params, cm, logprobs, locobs, major, newminor,
+                blims, logpf, lf, l1mf) )
+
+        return logsumexp(loc_lls) - np.log(3.0)  # divide by 3, averaging
