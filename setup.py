@@ -25,7 +25,10 @@ extensions = [
         libraries = [],
         library_dirs = []),
     Extension("cylocll", ["cylocll.pyx"],
-        include_dirs = [np.get_include()])
+        include_dirs = [np.get_include()]),
+    Extension("cygradient", ["cygradient.pyx"],
+        include_dirs = [np.get_include()],
+        define_macros=[('CYTHON_TRACE',1)])
 ]
 setup(
     ext_modules = cythonize(extensions),
