@@ -77,7 +77,7 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
 
     ###########################################################################
     # keep track of, for each f: 
-    #     c1 = \sum_{i reads} \log ( f P(Yi|Xi,a,th) + (1-f)P(Yi|Xi,A,th) )
+    #     c1 := \log P(f) + \sum_i \log (fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) )
     #
     # c1 requires no logsumexp trick outside of considering each individual
     # read.
