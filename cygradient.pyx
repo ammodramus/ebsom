@@ -11,6 +11,7 @@ from libc.math cimport log, exp, abs, isnan, isfinite
 from libc.stdio cimport printf
 from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
+from doubleveccounts cimport DoubleVecCounts
 
 import numpy as np
 from scipy.special import logsumexp
@@ -59,8 +60,35 @@ cdef double logsumexp_double(double *x, int n, double maxx = NAN):
     else:
         return v
 
+cdef double logsumexp_double_counts(double *x, unsigned int *counts, int n, double maxx = NAN):
+    if n == 0 or maxx == -INFINITY:
+        return -INFINITY
+    cdef double v
+    cdef int i
+    if isnan(maxx):
+        maxx = x[0]
+        for i in range(1,n):
+            if x[i] > maxx:
+                maxx = x[i]
+    #printf("maxx: %f\n", maxx)
+    cdef double S = 0.0
+    S = 0.0
+    #if False:
+    if maxx > -2 and maxx < 2:
+        # no logsumexp trick needed
+        for i in range(n):
+            S += exp(x[i]) * counts[i]
+        v = log(S)
+    else:
+        for i in range(n):
+            S += exp(x[i]-maxx) * counts[i]
+        v = maxx + log(S)
+    if isnan(v):
+        return -INFINITY
+    else:
+        return v
+
 cdef void collect_alpha_delta_log_summands(
-#def collect_alpha_delta_log_summands(
         int X_idx,
         int designated_outcome,
         int [:,::1] lo,
@@ -76,8 +104,8 @@ cdef void collect_alpha_delta_log_summands(
         int i, j, k, nlo, lp_idx, count, observed_outcome
         double logsummand, c1, c2, logabsXi, obs_tlp, des_tlp, Xi, tlpa, tlpA
         double logsummand_nof, tlf, tl1mf
-        DoubleVec log_alpha_log_summands,
-        DoubleVec log_delta_log_summands
+        DoubleVecCounts log_alpha_log_summands,
+        DoubleVecCounts log_delta_log_summands
 
     cdef int nfs = lf.shape[0]
     nlo = lo.shape[0]
@@ -93,13 +121,7 @@ cdef void collect_alpha_delta_log_summands(
             if Xi == 0.0:
                 for j in range(nfs):
                     log_alpha_log_summands = l_log_alpha_log_summands[j]
-                    #log_alpha_log_summands.append(-INFINITY, count)
-                    for k in range(count):
-                        # this is where 61% of the time is spent!
-                        #  1) make it inline
-                        #  2) use the counts, maybe
-                        # zero is considered positive in get_sign
-                        log_alpha_log_summands.append(-INFINITY)
+                    log_alpha_log_summands.append(-INFINITY, count)
                 continue
                 
             tlpA = lpA[lp_idx,observed_outcome]
@@ -130,12 +152,10 @@ cdef void collect_alpha_delta_log_summands(
                 log_alpha_log_summands = l_log_alpha_log_summands[j]
                 log_delta_log_summands = l_log_delta_log_summands[j]
                 if sign == 1:
-                    for k in range(count):
-                        log_alpha_log_summands.append(logsummand)
+                    log_alpha_log_summands.append(logsummand, count)
                 else:
                     #assert sign == -1
-                    for j in range(count):
-                        log_delta_log_summands.append(logsummand)
+                    log_delta_log_summands.append(logsummand, count)
 
 
 def loc_gradient(
@@ -217,10 +237,10 @@ def loc_gradient(
     cdef list l_log_alpha_log_summands, l_log_delta_log_summands
     l_log_alpha_log_summands, l_log_delta_log_summands = [], []
     for fidx in range(nfs):
-        l_log_alpha_log_summands.append(DoubleVec(1024,2))
-        l_log_delta_log_summands.append(DoubleVec(1024,2))
-    cdef DoubleVec log_alpha_log_summands
-    cdef DoubleVec log_delta_log_summands
+        l_log_alpha_log_summands.append(DoubleVecCounts(1024,2))
+        l_log_delta_log_summands.append(DoubleVecCounts(1024,2))
+    cdef DoubleVecCounts log_alpha_log_summands
+    cdef DoubleVecCounts log_delta_log_summands
     cdef DoubleVec afbf_pos_log_summands = DoubleVec(256, 2)
     cdef DoubleVec afbf_neg_log_summands = DoubleVec(256, 2)
     cdef bint is_major, bf_is_pos, found
@@ -299,20 +319,14 @@ def loc_gradient(
                 if (log_delta_log_summands.size == 0 and
                         log_alpha_log_summands.size == 0):
                     continue
-                #if log_alpha_log_summands.cur_max == -INFINITY:
-                #    printf("log_alpha_log_summands.cur_max == -INFINITY\n")
-                #    printf('%s %i %i %i %i %i %i %i\n', <bytes>base, readno, low, high,
-                #            bidx, X_idx, outcome, fidx)
-                #if log_delta_log_summands.cur_max == -INFINITY:
-                #    printf("log_delta_log_summands.cur_max == -INFINITY\n")
-                #    printf('%s %i %i %i %i %i %i %i\n', <bytes>base, readno, low, high,
-                #            bidx, X_idx, outcome, fidx)
-                log_alpha = logsumexp_double(
+                log_alpha = logsumexp_double_counts(
                         log_alpha_log_summands.data,
+                        log_alpha_log_summands.counts,
                         log_alpha_log_summands.size,
                         log_alpha_log_summands.cur_max)
-                log_delta = logsumexp_double(
+                log_delta = logsumexp_double_counts(
                         log_delta_log_summands.data,
+                        log_delta_log_summands.counts,
                         log_delta_log_summands.size,
                         log_delta_log_summands.cur_max)
                 if log_alpha >= log_delta:
