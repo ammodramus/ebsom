@@ -245,6 +245,9 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
     logabsbf = M + np.log(1-np.exp(log_min_ad-log_max_ad))
     logabsbf[((~np.isfinite(log_max_ad)) & (~np.isfinite(log_min_ad)))] = (
             -np.inf)
+    #for i in range(nbetas):
+    #    for j in range(logabsbf.shape[1]):
+    #        print "py {} {} {}".format(i, j, logabsbf[i,j] + c1[j])
 
     # for each parameter, need an array of the values of log a_f + log b_f,
     # where b_f is positive, and the values of log a_f + log |b_f|, where b_f
@@ -272,6 +275,7 @@ def loc_gradient(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1m
             bf_neg[i] = logsumexp(logabsbf[i,~pos] + c1[~pos]) - logsumexpaf
         else:
             bf_neg[i] = -np.inf
+        print 'py {} {} {}'.format(i, bf_pos[i], bf_neg[i])
 
     
     ret = np.exp(bf_pos) - np.exp(bf_neg)
