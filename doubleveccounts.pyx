@@ -44,3 +44,4 @@ cdef class DoubleVecCounts:
 
     def __dealloc__(self):
         free(self.data)
+        free(self.counts)
