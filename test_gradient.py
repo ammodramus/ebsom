@@ -37,8 +37,11 @@ if __name__ == '__main__':
     bam = bam_fns[0]
     loc = 0
 
-    grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys,
-            num_f=100,num_pf_params=3)
+    import schwimmbad
+    pool = schwimmbad.MultiPool(3)
+
+    grad = cygradient.gradient(pars, cm, lo, all_majorminor, blims, rowlen,
+            f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
     for g in grad:
         print g
 

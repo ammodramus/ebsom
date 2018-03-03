@@ -1,6 +1,6 @@
-## cython: profile=True
-## cython: linetrace=True
-## cython: binding=True
+# cython: profile=True
+# cython: linetrace=True
+# cython: binding=True
 ## distutils: define_macros=CYTHON_TRACE_NOGIL=1
 ## cython: boundscheck=False
 ## cython: wraparound=False
@@ -159,6 +159,9 @@ cdef void collect_alpha_delta_log_summands(
                     log_delta_log_summands.append(logsummand, count)
 
 
+def loc_gradient_wrapper(args):
+    return loc_gradient(*args)
+
 def loc_gradient(
         np.ndarray[ndim=1,dtype=np.float64_t] params,
         double [:,::1] cm,
@@ -171,11 +174,30 @@ def loc_gradient(
         double [:] lf,
         double [:] l1mf,
         np.ndarray[dtype=np.float64_t,ndim=2] Dlogpf,
-        double [:] logaf,
         int num_pf_params,
         bint return_both = False):
 
-    assert lpf.shape[0] == lf.shape[0] and lpf.shape[0] == l1mf.shape[0]
+    '''
+    print '###############'
+    print 'params', params
+    print 'cm', cm
+    print 'logprobs', logprobs
+    print 'locobs', locobs
+    print 'major', major
+    print 'minor', minor
+    print 'blims', blims
+    print 'lpf', lpf
+    print 'lf', lf
+    print 'l1mf', l1mf
+    print 'Dlogpf', Dlogpf
+    print 'num_pf_params', num_pf_params
+    print 'return_both', return_both
+    print '####################################'
+    '''
+    if minor == 'N':
+        return loc_gradient_Nminor(params, cm, logprobs, locobs, major,
+                minor, blims, lpf, lf, l1mf, Dlogpf, num_pf_params)
+
     cdef bytes rmajor, rminor
     rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
 
@@ -190,8 +212,10 @@ def loc_gradient(
         double tlpA, tlpa, M, m, c2, c3, val, logabsbf, tlf, tl1mf
         double [:,::1] lpA
         double [:,::1] lpa
+        double [:] logaf
         int [:,::1] lo
 
+    logaf = np.zeros(lpf.shape[0])
 
     rowlen = cm.shape[1]
     nfs = lf.shape[0]
@@ -409,17 +433,16 @@ def loc_gradient(
 
 
 def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
-        lf, l1mf, logpf_grad, logaf_b, num_pf_params):
+        lf, l1mf, logpf_grad, num_pf_params):
     if minor != 'N':
         raise ValueError('calling Nminor gradient when minor is not N')
     lls = []
     llps = []
-    for minor in 'ACGT':
-        if minor == major:
+    for newminor in 'ACGT':
+        if newminor == major:
             continue
-        # TODO
-        ll, grad = loc_gradient(params, cm, logprobs, locobs, major, minor,
-            blims, lpf, lf, l1mf, logpf_grad, logaf_b, num_pf_params, return_both = True)
+        ll, grad = loc_gradient(params, cm, logprobs, locobs, major, newminor,
+            blims, lpf, lf, l1mf, logpf_grad, num_pf_params, return_both = True)
         lls.append(ll)
         llps.append(grad)
 
@@ -460,212 +483,9 @@ def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
         ret[i] = np.exp(a) - np.exp(b)
     return ret
 
-def loc_ll(params, cm, logprobs, locobs, major, minor, blims, lpf, lf, l1mf):
-    '''
-    going to iterate through f's, iterating through reads for each f.
-
-    For each f, then need to calculate for each read (iterating over
-    F1,F2,R1,R2):
-
-        \log(f P(Y_i | X_i, a, params) + (1-f) P(Y_i | X_i, A, params),
-    since this quantity is used three times for each read.
-
-    the easiest way to do this is to populate a matrix the same size as
-    logprobs with the appropriate mixture or log-mixture for each f, then read
-    from that table. This will be slow, though, since this will calculate the
-    probability for many more observations than are found at this locus.
-    Instead, keep in a dictionary, indexed by the index in locobs?
-
-    might also be able to do the same for P'(y...), etc.
-    '''
-    rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
-
-    ###########################################################################
-    # a := \log f + \log P(Y_i | X_i, a, params)
-    # b := \log (1-f) + \log P(Y_i | X_i, A, params)
-    #
-    # Need to calculate a and b for each F1,F2,R1,R2. Calculations will be done
-    # using logsumexp trick instead of direct calculation. For each observation
-    # in locobs, will store a and b in matrixes (say, A and B), where A[i,j] is
-    # the value of a for the i'th f and the j'th outcome of the four possible,
-    # corresponding to the entries in logprobs. B is similarly defined.
-    #
-    # Each matrix will be stored in a dict, since we want to calculate this
-    # matrix only for the observations at this locus, not all the entries in
-    # logprobs. The key will be the index in locobs (i.e., the first column in
-    # locobs)
-    ###########################################################################
-
-    ###########################################################################
-    # keep track of, for each f: 
-    #     c1 = \sum_{i reads} \log ( f P(Yi|Xi,a,th) + (1-f)P(Yi|Xi,A,th) )
-    #
-    # c1 requires no logsumexp trick outside of considering each individual
-    # read.
-    #
-    # For a given f and a given minor-allele regression parameter (indexed i),
-    # have to keep a list of values of
-    #
-    #     \log f + \log |DP(Yi|Xi,a)| - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A))
-    #
-    # where DP(Yi,Xi,a) is negative, and a list of the values
-    #
-    #     \log f + \log DP(Yi|Xi,a) - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A))
-    #
-    # where DP(Yi,Xi,a) is positive.
-    #
-    # This also needs to be kept for the major-allele regression, but with
-    #
-    #     \log (1-f) + \log |DP(Yi|Xi,A)| - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A)) 
-    # and
-    #
-    #     \log (1-f) + \log DP(Yi|Xi,A) - \log(fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A)) 
-    #
-    # respectively (note a -> A).
-    #
-    # The number of positive and negative values in these lists will be the
-    # same for each f, but it will differ from parameter to parameter. So there
-    # will be two counts, count_neg, and count_pos, for each parameter. This
-    # means that there needs to be two arrays, S_pos, and S_neg, with shape
-    # (n_fs, nobs) for each parameter. Store these in a list, and have
-    # count_neg and count_pos in an array.
-    ###########################################################################
-
-    rowlen = cm.shape[1]
-    nregs = len(blims.keys())
-    nbetasperreg = 3*rowlen
-    nbetas = nregs*nbetasperreg
-    nfs = lf.shape[0]
-
-    c1 = lpf.copy()
-
-    # forward, 1
-    lo = locobs[0][0] # locobs for forward, 1
-    nlo = lo.shape[0]
-    lpA = logprobs[(major,1)]
-    lpa = logprobs[(minor,1)]
-    lowA, highA = blims[(major, 1)]
-    lowa, higha = blims[(minor, 1)]
-    for i in range(nlo):
-        lp_idx = lo[i,0]
-        for j, count in enumerate(lo[i,1:]):
-            if count <= 0:   # should never be < 0
-                continue
-            tlpA = lpA[lp_idx,j]
-            tlpa = lpa[lp_idx,j]
-            # calculate the summands to add to c1
-            c2 = lf + tlpa
-            c3 = l1mf + tlpA
-            M = np.maximum(c2,c3)
-            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
-            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
-            c1 += count*c4  # the count is rolled into the sum here
-
-    lo = locobs[0][1] # locobs for forward, 2
-    nlo = lo.shape[0]
-    lpA = logprobs[(major,2)]
-    lpa = logprobs[(minor,2)]
-    lowA, highA = blims[(major, 2)]
-    lowa, higha = blims[(minor, 2)]
-    for i in range(nlo):
-        lp_idx = lo[i,0]
-        for j, count in enumerate(lo[i,1:]):
-            if count <= 0:   # should never be < 0
-                continue
-            tlpA = lpA[lp_idx,j]
-            tlpa = lpa[lp_idx,j]
-            # calculate the summands to add to c1
-            c2 = lf + tlpa
-            c3 = l1mf + tlpA
-            M = np.maximum(c2,c3)
-            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
-            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
-            c1 += count*c4  # the count is rolled into the sum here
-
-
-    lo = locobs[1][0] # locobs for reverse, 1
-    nlo = lo.shape[0]
-    lpA = logprobs[(rmajor,1)]
-    lpa = logprobs[(rminor,1)]
-    lowA, highA = blims[(rmajor, 1)]
-    lowa, higha = blims[(rminor, 1)]
-    for i in range(nlo):
-        lp_idx = lo[i,0]
-        for j, count in enumerate(lo[i,1:]):
-            if count <= 0:   # should never be < 0
-                continue
-            tlpA = lpA[lp_idx,j]
-            tlpa = lpa[lp_idx,j]
-            # calculate the summands to add to c1
-            c2 = lf + tlpa
-            c3 = l1mf + tlpA
-            M = np.maximum(c2,c3)
-            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
-            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
-            c1 += count*c4  # the count is rolled into the sum here
-
-
-    lo = locobs[1][1] # locobs for reverse, 2
-    nlo = lo.shape[0]
-    lpA = logprobs[(rmajor,2)]
-    lpa = logprobs[(rminor,2)]
-    lowA, highA = blims[(rmajor, 2)]
-    lowa, higha = blims[(rminor, 2)]
-    for i in range(nlo):
-        lp_idx = lo[i,0]
-        for j, count in enumerate(lo[i,1:]):
-            if count <= 0:   # should never be < 0
-                continue
-            tlpA = lpA[lp_idx,j]
-            tlpa = lpa[lp_idx,j]
-            # calculate the summands to add to c1
-            c2 = lf + tlpa
-            c3 = l1mf + tlpA
-            M = np.maximum(c2,c3)
-            # c4 := log (f P(Y_i|a) + (1-f)P(Y_i|A)) for this (unique) read obs
-            c4 = M + np.log(np.exp(c2-M) + np.exp(c3-M))
-            c1 += count*c4  # the count is rolled into the sum here
-
-
-    ##### now, process ####
-
-    # for each f and each parameter, we need to logsumexp the positive and the
-    # negative. log_alpha is the logsumexp of the positive, log_delta is the logsumexp
-    # of the negative
-
-    logsumexplogaf = logsumexp(c1)
-    
-    return logsumexplogaf
 
 @cython.wraparound(True)
-def gradient(params, ref, bam, position, cm, lo, mm, blims,
-        rowlen, freqs, breaks, lf, l1mf, regs):
-
-    betas = params[:-2]
-    ab, ppoly = params[-2:]
-    N = 1000
-    logpf = np.log(afd.get_stationary_distribution_double_beta(
-        freqs, breaks, N, ab, ppoly))
-
-    logprobs = {}
-    X = cm
-    for reg in regs:
-        low, high = blims[reg]
-        b = betas[low:high].reshape((rowlen,-1), order = 'F')
-        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
-        Xb -= logsumexp(Xb, axis = 1)[:,None]
-        logprobs[reg] = Xb
-
-    locobs = lo[ref][bam][position]
-    major, minor = mm[ref][bam][position]
-
-    if minor != 'N':
-        return loc_gradient(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf) 
-    else:
-        return loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, logpf, lf, l1mf)
-
-@cython.wraparound(True)
-def gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
+def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
         rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
 
     betas = params[:-num_pf_params]
@@ -694,9 +514,41 @@ def gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
                 logpf, lf, l1mf, logpf_grad, logaf_b, num_pf_params)
         return loc_grad
     else:
-#def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
-#        lf, l1mf, logpf_grad, logaf_b, num_pf_params):
         loc_grad = loc_gradient_Nminor(params, cm, logprobs, locobs, major,
                 minor, blims, logpf, lf, l1mf, logpf_grad, logaf_b,
                 num_pf_params)
         return loc_grad
+
+
+def gradient(params, cm, lo, mm, blims, rowlen, freqs, lf, l1mf,
+        regs, num_f, num_pf_params, pool):
+    betas = params[:-num_pf_params]
+    pf_params = params[-num_pf_params:]
+    f = freqs
+    logpf = bws.get_lpf(pf_params, f)
+    logpf_grad = bws.get_gradient(pf_params,f)
+
+    logprobs = {}
+    X = cm
+    for reg in regs:
+        low, high = blims[reg]
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+        Xb -= logsumexp(Xb, axis = 1)[:,None]
+        logprobs[reg] = Xb
+
+    args = []
+    for ref in lo.keys():
+        for bam in lo[ref].keys():
+            for position in range(len(lo[ref][bam])):
+                locobs = lo[ref][bam][position]
+                major, minor = mm[ref][bam][position]
+                if major == 'N':
+                    continue
+                args.append((params, cm, logprobs, locobs, major, minor, blims,
+                    logpf, lf, l1mf, logpf_grad, num_pf_params))
+
+    grads = pool.map(loc_gradient_wrapper, args)
+
+    grad = grads.sum(0)
+    return grad
