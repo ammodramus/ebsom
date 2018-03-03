@@ -172,7 +172,8 @@ def loc_gradient(
         double [:] l1mf,
         np.ndarray[dtype=np.float64_t,ndim=2] Dlogpf,
         double [:] logaf,
-        int num_pf_params):
+        int num_pf_params,
+        bint return_both = False):
 
     assert lpf.shape[0] == lf.shape[0] and lpf.shape[0] == l1mf.shape[0]
     cdef bytes rmajor, rminor
@@ -399,13 +400,16 @@ def loc_gradient(
                 v = -exp(logdiff)
                 grad[bidx] = v if isfinite(v) else 0.0
             # end bidx loop
-    return grad_np
+    if return_both:
+        return logsumexplogaf, grad_np
+    else:
+        return grad_np
 
 
 
 
 def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
-        lf, l1mf):
+        lf, l1mf, logpf_grad, logaf_b, num_pf_params):
     if minor != 'N':
         raise ValueError('calling Nminor gradient when minor is not N')
     lls = []
@@ -414,11 +418,10 @@ def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
         if minor == major:
             continue
         # TODO
-        # can change gradient function so that it returns both gradient and ll
-        lls.append(loc_ll(params, cm, logprobs, locobs, major, minor, blims,
-            lpf, lf, l1mf))
-        llps.append(loc_gradient(params, cm, logprobs, locobs, major, minor,
-            blims, lpf, lf, l1mf))
+        ll, grad = loc_gradient(params, cm, logprobs, locobs, major, minor,
+            blims, lpf, lf, l1mf, logpf_grad, logaf_b, num_pf_params, return_both = True)
+        lls.append(ll)
+        llps.append(grad)
 
     nparams = llps[0].shape[0]
     lsell = logsumexp(lls)
@@ -687,11 +690,13 @@ def gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     logaf_b = np.zeros(nfs)
 
     if minor != 'N':
-        import time; start = time.time()
         loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
                 logpf, lf, l1mf, logpf_grad, logaf_b, num_pf_params)
-        dur = time.time() - start
-        print '# took {} seconds!'.format(dur)
         return loc_grad
     else:
-        raise NotImplementedError('non-N not yet implemented')
+#def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
+#        lf, l1mf, logpf_grad, logaf_b, num_pf_params):
+        loc_grad = loc_gradient_Nminor(params, cm, logprobs, locobs, major,
+                minor, blims, logpf, lf, l1mf, logpf_grad, logaf_b,
+                num_pf_params)
+        return loc_grad

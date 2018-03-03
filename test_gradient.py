@@ -34,41 +34,31 @@ pars = np.concatenate((betas, (a,b,z)))
 
 if __name__ == '__main__':
     bam = bam_fns[0]
-    loc = 10
+    loc = 0
+
+    grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys,
+            num_f=100,num_pf_params=3)
+    for g in grad:
+        print g
+
+    #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
+    #from scipy.optimize import approx_fprime
+    #ngrad = approx_fprime(pars, likefun, 1e-9)
+    #for ng in ngrad:
+    #    print ng
 
     #import line_profiler
     #prof = line_profiler.LineProfiler(cygradient.gradient_make_buffers, cygradient.loc_gradient, cygradient.collect_alpha_delta_log_summands)
     #prof.runcall(cygradient.gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
     #prof.print_stats()
 
-    grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys,
-            num_f=100,num_pf_params=3)
-    for g in grad:
-        print g
-    #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
-    #print 'py ll = ', likefun(pars)
 
     #import cProfile
     #cProfile.runctx("cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)", globals(), locals(), "Profile.prof")
-
     #import pstats
     #s = pstats.Stats("Profile.prof")
     #s.strip_dirs().sort_stats("time").print_stats()
-    #grad = gradient.gradient(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
-    #dur = time.time() - start
-    #grad = np.concatenate((grad, (0,0)))
-    #for g in grad:
-    #    print g
-    #print '# took {} seconds'.format(dur)
-    #grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys,
-    #        num_f=100,num_pf_params=3)
-    #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
-    #from scipy.optimize import approx_fprime
-    #ngrad = approx_fprime(pars, likefun, 1e-9)
-    #for ng in ngrad:
-    #    print ng
-    #for g, ng in np.nditer((grad, ngrad)):
-    #    print g, ng
+
 
     #from likelihood import single_locus_log_likelihood
     #likefun = lambda x: single_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
