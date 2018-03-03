@@ -4,36 +4,19 @@ import numpy.random as npr
 import afd
 import gradient
 import cygradient
+import beta_with_spikes as bws
+import util
 
-N = 1000
-ab = 0.3
-ppoly = 0.1
-breaks = afd.get_breaks_symmetric(N = N, uniform_weight = 0.2, min_bin_size = 0.01)
-freqs = afd.get_binned_frequencies(N, breaks)
-lf = np.log(freqs)
-l1mf = np.log(1-freqs)
-
+num_f = 100
+f = bws.get_freqs(num_f)
+lf = np.log(f)
+l1mf = np.log(1-f)
 
 cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
 
 bam_fns = lo['chrM'].keys()
 
-lo_sorted = {}
-for chrom, lochrom in lo.iteritems():
-    lo_sorted[chrom] = {}
-    for bam_fn, lobam in lochrom.iteritems():
-        lo_sorted[chrom][bam_fn] = []
-        for locidx, loclo in enumerate(lobam):
-            thislo = []
-            for fr in [0,1]:
-                p = []
-                for r in [0,1]:
-                    a = loclo[fr][r]
-                    p.append(a[np.argsort(a[:,0])].astype(np.uint32).copy())
-                p = tuple(p)
-                thislo.append(p)
-            thislo = tuple(thislo)
-            lo_sorted[chrom][bam_fn].append(thislo)
+lo = util.sort_lo(lo)
 
 regkeys = [(b, r) for b in 'ACGT' for r in (1,2)]
 rowlen = cm.shape[1]
@@ -43,26 +26,11 @@ for i, reg in enumerate(regkeys):
     high = rowlen*3*(i+1)
     blims[reg] = (low, high)
 
-import time; time.time()
-
 nbetas = len(regkeys)*3*rowlen
-#betas = np.zeros(nbetas)
 npr.seed(0); betas = npr.uniform(-0.2,0.2, size=nbetas)
-pars = np.concatenate((betas, (ab, ppoly)))
-
-'''
-import schwimmbad
-
-pool = schwimmbad.MultiPool(4)
-#pool = schwimmbad.SerialPool()
-#pool = None
-import time; t = time.time()
-print calc_likelihood(pars, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf,
-        l1mf, regkeys, pool = pool)
-dur = time.time() - t
-print 'took {} seconds'.format(dur)
-pool.close()
-'''
+num_pf_params = 3
+a, b, z = -1, 0.5, -0.5
+pars = np.concatenate((betas, (a,b,z)))
 
 if __name__ == '__main__':
     bam = bam_fns[0]
@@ -73,7 +41,8 @@ if __name__ == '__main__':
     #prof.runcall(cygradient.gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
     #prof.print_stats()
 
-    grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
+    grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys,
+            num_f=100,num_pf_params=3)
     for g in grad:
         print g
     #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
@@ -91,7 +60,9 @@ if __name__ == '__main__':
     #for g in grad:
     #    print g
     #print '# took {} seconds'.format(dur)
-    #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
+    #grad = cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys,
+    #        num_f=100,num_pf_params=3)
+    #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
     #from scipy.optimize import approx_fprime
     #ngrad = approx_fprime(pars, likefun, 1e-9)
     #for ng in ngrad:

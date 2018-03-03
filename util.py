@@ -254,3 +254,22 @@ def collect_loc_obs(locobs):
             for lobs in bamobs:
                 ret[ref][bam].append(collect_indiv_loc_obs(lobs))
     return ret
+
+def sort_lo(lo):
+    lo_sorted = {}
+    for chrom, lochrom in lo.iteritems():
+        lo_sorted[chrom] = {}
+        for bam_fn, lobam in lochrom.iteritems():
+            lo_sorted[chrom][bam_fn] = []
+            for locidx, loclo in enumerate(lobam):
+                thislo = []
+                for fr in [0,1]:
+                    p = []
+                    for r in [0,1]:
+                        a = loclo[fr][r]
+                        p.append(a[np.argsort(a[:,0])].astype(np.int32).copy())
+                    p = tuple(p)
+                    thislo.append(p)
+                thislo = tuple(thislo)
+                lo_sorted[chrom][bam_fn].append(thislo)
+    return lo_sorted

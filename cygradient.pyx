@@ -2,8 +2,8 @@
 ## cython: linetrace=True
 ## cython: binding=True
 ## distutils: define_macros=CYTHON_TRACE_NOGIL=1
-# cython: boundscheck=False
-# cython: wraparound=False
+## cython: boundscheck=False
+## cython: wraparound=False
 
 cimport cython
 cimport numpy as np
@@ -12,6 +12,7 @@ from libc.stdio cimport printf
 from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
 from doubleveccounts cimport DoubleVecCounts
+import beta_with_spikes as bws
 
 import numpy as np
 from scipy.special import logsumexp
@@ -169,7 +170,9 @@ def loc_gradient(
         double [:] lpf,
         double [:] lf,
         double [:] l1mf,
-        double [:] logaf):
+        np.ndarray[dtype=np.float64_t,ndim=2] Dlogpf,
+        double [:] logaf,
+        int num_pf_params):
 
     assert lpf.shape[0] == lf.shape[0] and lpf.shape[0] == l1mf.shape[0]
     cdef bytes rmajor, rminor
@@ -191,7 +194,10 @@ def loc_gradient(
 
     rowlen = cm.shape[1]
     nfs = lf.shape[0]
-
+    nregs = len(blims.keys())
+    nbetasperreg = 3*rowlen
+    nbetas = nregs*nbetasperreg
+    nfs = lf.shape[0]
 
     # logaf := \log P(f) + \sum_i \log (fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) )
     logaf[:] = lpf[:]
@@ -228,12 +234,37 @@ def loc_gradient(
                     c4 = M + log(1 + exp(m-M))
                     logaf[fidx] += count*c4
 
+    grad[:] = 0.0
     cdef double logsumexplogaf = logsumexp_double(&logaf[0], nfs)
-    #printf("ll = %f\n", logsumexplogaf)
+
+    # here, calculate the gradient for the distribution parameters
+    logabs_Dlogpf = np.log(np.abs(Dlogpf))
+    sign_Dlogpf = (Dlogpf >= 0)*2 - 1
+    cdef DoubleVec log_pos_summands_Dlogpf = DoubleVec(lf.shape[0], 2)
+    cdef DoubleVec log_neg_summands_Dlogpf = DoubleVec(lf.shape[0], 2)
+    cdef double lse_pos, lse_neg
+    for i in range(num_pf_params):
+        log_pos_summands_Dlogpf.clear()
+        log_neg_summands_Dlogpf.clear()
+        for fidx in range(nfs):
+            if sign_Dlogpf[fidx,i] == 1:
+                log_pos_summands_Dlogpf.append(logaf[fidx] + logabs_Dlogpf[fidx,i])
+            else:
+                assert sign_Dlogpf[fidx,i] == -1
+                log_neg_summands_Dlogpf.append(logaf[fidx] + logabs_Dlogpf[fidx,i])
+        lse_pos = logsumexp_double(log_pos_summands_Dlogpf.data,
+                                   log_pos_summands_Dlogpf.size,
+                                   log_pos_summands_Dlogpf.cur_max)
+        lse_neg = logsumexp_double(log_neg_summands_Dlogpf.data,
+                                   log_neg_summands_Dlogpf.size,
+                                   log_neg_summands_Dlogpf.cur_max)
+        if lse_pos > lse_neg:
+            grad[nbetas+i] = exp(lse_pos + np.log(1-np.exp(lse_neg-lse_pos)) - logsumexplogaf)
+        else:
+            grad[nbetas+i] = -exp(lse_neg + np.log(1-np.exp(lse_pos-lse_neg)) - logsumexplogaf)
 
     # a_f is the same for all parameters. now have to calculate b_f for each
     # parameter.
-    grad[:] = 0.0
     cdef list l_log_alpha_log_summands, l_log_delta_log_summands
     l_log_alpha_log_summands, l_log_delta_log_summands = [], []
     for fidx in range(nfs):
@@ -632,13 +663,13 @@ def gradient(params, ref, bam, position, cm, lo, mm, blims,
 
 @cython.wraparound(True)
 def gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
-        rowlen, freqs, breaks, lf, l1mf, regs):
+        rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
 
-    betas = params[:-2]
-    ab, ppoly = params[-2:]
-    N = 1000
-    logpf = np.log(afd.get_stationary_distribution_double_beta(
-        freqs, breaks, N, ab, ppoly))
+    betas = params[:-num_pf_params]
+    pf_params = params[-num_pf_params:]
+    f = freqs
+    logpf = bws.get_lpf(pf_params, f)
+    logpf_grad = bws.get_gradient(pf_params,f)
 
     logprobs = {}
     X = cm
@@ -658,9 +689,9 @@ def gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     if minor != 'N':
         import time; start = time.time()
         loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
-                logpf, lf, l1mf, logaf_b)
+                logpf, lf, l1mf, logpf_grad, logaf_b, num_pf_params)
         dur = time.time() - start
-        print 'took {} seconds!'.format(dur)
+        print '# took {} seconds!'.format(dur)
         return loc_grad
     else:
         raise NotImplementedError('non-N not yet implemented')

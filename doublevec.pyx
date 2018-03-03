@@ -1,5 +1,5 @@
 from libc.stdlib cimport malloc, free, calloc, realloc
-from libc.math cimport INFINITY
+from libc.math cimport INFINITY, isnan
 
 cdef class DoubleVec:
 
@@ -21,7 +21,7 @@ cdef class DoubleVec:
 
     cdef inline void append(self, double v):
         cdef unsigned int new_max_size
-        self.data[self.size] = v
+        self.data[self.size] = v if not isnan(v) else -INFINITY
         if v > self.cur_max:
             self.cur_max = v
         self.size += 1

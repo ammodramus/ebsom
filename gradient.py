@@ -4,6 +4,7 @@ from scipy.special import logsumexp
 import likelihood as lik
 import afd
 import util as ut
+import beta_with_spikes as bws
 
 
 @jit
@@ -550,12 +551,10 @@ def gradient(params, ref, bam, position, cm, lo, mm, blims,
 
 
 def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
-        rowlen, freqs, breaks, lf, l1mf, regs):
-    betas = params[:-2]
-    ab, ppoly = params[-2:]
-    N = 1000
-    logpf = np.log(afd.get_stationary_distribution_double_beta(
-        freqs, breaks, N, ab, ppoly))
+        rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
+    betas = params[:-num_pf_params]
+    f_params = params[-num_pf_params:]
+    logpf = bws.get_lpf(f_params, freqs)
     logprobs = {}
     X = cm
     for reg in regs:
