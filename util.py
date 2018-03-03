@@ -273,3 +273,16 @@ def sort_lo(lo):
                 thislo = tuple(thislo)
                 lo_sorted[chrom][bam_fn].append(thislo)
     return lo_sorted
+
+def normalize_covariates(cm):
+    retcm = cm.copy()
+    min_maxes = []
+    for j in range(cm.shape[1]):
+        m = retcm[:,j].min()
+        M = retcm[:,j].max()
+        if m != M:
+            retcm[:,j] = (retcm[:,j]-m)/(M-m)
+        else:
+            retcm[:,j] = 0
+        min_maxes.append((m,M))
+    return retcm, min_maxes

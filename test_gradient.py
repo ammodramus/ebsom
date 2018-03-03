@@ -13,6 +13,7 @@ lf = np.log(f)
 l1mf = np.log(1-f)
 
 cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
+cm, cm_minmaxes = util.normalize_covariates(cm)
 
 bam_fns = lo['chrM'].keys()
 
