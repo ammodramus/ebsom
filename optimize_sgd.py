@@ -40,7 +40,20 @@ a, b, z = -1, 0.5, -0.5
 pars = np.concatenate((betas, (a,b,z)))
 
 import schwimmbad
-pool = schwimmbad.MultiPool(3)
+parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter))
+parser.add_argument('--num-processes', type = int)
+parser.add_argument('--mpi', action = 'store_true')
+args = parser.parse_args()
+if parser.num_processes is not None:
+    pool = schwimmbad.MultiPool(args.num_processes)
+elif args.mpi:
+    pool = schwimmbad.MPIPool()
+    if not pool_is_master():
+        pool.wait()
+        sys.exit(0)
+else:
+    pool = schwimmbad.SerialPool()
 
 def likefun(p):
     v = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, lf,
