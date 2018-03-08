@@ -31,6 +31,9 @@ extensions = [
         extra_compile_args = ['-march=native']),
         #include_dirs = [np.get_include()],
         #define_macros=[('CYTHON_TRACE',1)]),
+    Extension("cylikelihood", ["cylikelihood.pyx"],
+        include_dirs = [np.get_include()],
+        extra_compile_args = ['-march=native']),
     Extension("doublevec", ["doublevec.pyx"]),
     Extension("doubleveccounts", ["doubleveccounts.pyx"])
 ]

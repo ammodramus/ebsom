@@ -6,6 +6,7 @@ import numpy as np
 import afd
 from likelihood import calc_likelihood
 import numpy.random as npr
+import argparse
 
 N = 1000
 ab = 0.3

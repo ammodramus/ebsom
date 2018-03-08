@@ -4,6 +4,7 @@ import numpy.random as npr
 import afd
 import gradient
 import cygradient
+import cylikelihood
 import beta_with_spikes as bws
 import util
 
@@ -31,6 +32,8 @@ nbetas = len(regkeys)*3*rowlen
 npr.seed(0); betas = npr.uniform(-0.2,0.2, size=nbetas)
 num_pf_params = 3
 a, b, z = -1, 0.5, -0.5
+#a, b, z = 0,0,0
+#a, b, z = -1, -1, -2
 pars = np.concatenate((betas, (a,b,z)))
 
 if __name__ == '__main__':
@@ -38,12 +41,15 @@ if __name__ == '__main__':
     loc = 0
 
     import schwimmbad
-    pool = schwimmbad.MultiPool(3)
+    pool = schwimmbad.MultiPool(10)
 
-    grad = cygradient.gradient(pars, cm, lo, all_majorminor, blims, rowlen,
-            f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
-    for g in grad:
-        print g
+    #grad = cygradient.gradient(pars, cm, lo, all_majorminor, blims, rowlen,
+    #        f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
+    #for g in grad:
+    #    print g
+    ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, lf,
+            l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
+    print ll
 
     #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
     #from scipy.optimize import approx_fprime
