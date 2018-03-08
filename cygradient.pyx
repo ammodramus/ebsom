@@ -1,9 +1,9 @@
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
+## cython: profile=True
+## cython: linetrace=True
+## cython: binding=True
 ## distutils: define_macros=CYTHON_TRACE_NOGIL=1
-## cython: boundscheck=False
-## cython: wraparound=False
+# cython: boundscheck=False
+# cython: wraparound=False
 
 cimport cython
 cimport numpy as np
@@ -93,9 +93,12 @@ cdef void collect_alpha_delta_log_summands(
         int X_idx,
         int designated_outcome,
         int [:,::1] lo,
-        double [:,::1] lpA,
-        double [:,::1] lpa,
-        double [:,::1] cm,
+        #double [:,::1] lpA,
+        #double [:,::1] lpa,
+        #double [:,::1] cm,
+        np.ndarray[ndim=2,dtype=np.float64_t] lpA,
+        np.ndarray[ndim=2,dtype=np.float64_t] lpa,
+        np.ndarray[ndim=2,dtype=np.float64_t] cm,
         bint is_major,
         double [:] lf,
         double [:] l1mf,
@@ -164,7 +167,8 @@ def loc_gradient_wrapper(args):
 
 def loc_gradient(
         np.ndarray[ndim=1,dtype=np.float64_t] params,
-        double [:,::1] cm,
+        #double [:,::1] cm,
+        np.ndarray[dtype=np.float64_t,ndim=2] cm,
         dict logprobs,
         tuple locobs,
         bytes major,
@@ -210,8 +214,10 @@ def loc_gradient(
         list los, major_keys, lpAs, lowAs, highAs,
         list minor_keys, lpas, lowas, highas
         double tlpA, tlpa, M, m, c2, c3, val, logabsbf, tlf, tl1mf
-        double [:,::1] lpA
-        double [:,::1] lpa
+        np.ndarray[ndim=2,dtype=np.double_t] lpA
+        np.ndarray[ndim=2,dtype=np.double_t] lpa
+        #double [:,::1] lpA
+        #double [:,::1] lpa
         double [:] logaf
         int [:,::1] lo
 
@@ -586,6 +592,5 @@ def gradient(params, cm, lo, mm, blims, rowlen, freqs, lf, l1mf,
                     logpf, lf, l1mf, logpf_grad, num_pf_params))
 
     grads = pool.map(loc_gradient_wrapper, args)
-
-    grad = grads.sum(0)
+    grad = np.sum(grads, axis = 0)
     return grad
