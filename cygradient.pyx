@@ -520,6 +520,43 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
         return loc_grad
 
 
+def get_args(lo, mm):
+    args = []
+    for ref in lo.keys():
+        for bam in lo[ref].keys():
+            for position in range(len(lo[ref][bam])):
+                locobs = lo[ref][bam][position]
+                major, minor = mm[ref][bam][position]
+                if major == 'N':
+                    continue
+                args.append([locobs, major, minor])
+    return args
+
+def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs):
+
+    def f(params, argslist):
+        betas = params[:-num_pf_params]
+        pf_params = params[-num_pf_params:]
+        f = freqs
+        logpf = bws.get_lpf(pf_params, f)
+        logpf_grad = bws.get_gradient(pf_params,f)
+        logprobs = {}
+        X = cm
+        for reg in regs:
+            low, high = blims[reg]
+            b = betas[low:high].reshape((rowlen,-1), order = 'F')
+            Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+            Xb -= logsumexp(Xb, axis = 1)[:,None]
+            logprobs[reg] = Xb
+        grad = 0.0
+        for args in argslist:
+            locobs, major, minor = args
+            grad += loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
+                    logpf, lf l1mf, logpf_grad, num_pf_params)
+        return grad
+
+    return f
+
 def gradient(params, cm, lo, mm, blims, rowlen, freqs, lf, l1mf,
         regs, num_f, num_pf_params, pool):
     betas = params[:-num_pf_params]
