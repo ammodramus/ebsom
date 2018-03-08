@@ -538,7 +538,11 @@ def get_args(lo, mm):
                 args.append([locobs, major, minor])
     return args
 
-def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs):
+# what we want:
+#  - a function that takes a list of (locobs, major, minor) and returns the
+#    gradient, calculated using the pool
+def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, regs, pool):
+    rowlen = cm.shape[1]
 
     def f(params, argslist):
         betas = params[:-num_pf_params]
@@ -554,11 +558,13 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs):
             Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
             Xb -= logsumexp(Xb, axis = 1)[:,None]
             logprobs[reg] = Xb
-        grad = 0.0
-        for args in argslist:
-            locobs, major, minor = args
-            grad += loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
-                    logpf, lf l1mf, logpf_grad, num_pf_params)
+        loc_gradient_args = [
+                (params, cm, logprobs, locobs, major, minor, blims, logpf, lf,
+                    l1mf, logpf_grad, num_pf_params) for locobs, major, minor
+                in argslist
+                ]
+        grads = pool.map(loc_gradient_wrapper, loc_gradient_args)
+        grad = np.sum(grads, axis = 0)
         return grad
 
     return f
