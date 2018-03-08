@@ -84,4 +84,4 @@ while True:
         Wgrad_prev = Wgrad[:]
         Wprev[:] = W[:]
         W += -alpha * Wgrad
-        print W
+        print "\t".join([str(el) for el in W])
