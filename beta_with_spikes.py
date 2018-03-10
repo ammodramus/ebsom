@@ -1,4 +1,3 @@
-from math import exp, log
 import numpy as np
 from scipy.special import beta, digamma
 
@@ -18,12 +17,13 @@ def get_freqs(num_f):
     f = np.zeros(num_f)
     f[0] = 0.0
     f[1:] = get_psmc_times(num_f-1,0.5)
+    f = f[:-1]  # frequency = 0.5 causes numerical problems: log(0) == -inf
     return f
 
 def get_lpf(params, x):
     A, B, z = params
-    eA = exp(A)
-    eB = exp(B)
+    eA = np.exp(A)
+    eB = np.exp(B)
     lz = logistic(z)
     lpf = np.zeros_like(x)
     lpf[x==0.0] = np.log(lz)
@@ -36,8 +36,8 @@ def get_gradient(params, x):
     # returns a gradient for each value of x, so a matrix M with shape
     # (nx,nparams)
     A, B, z = params
-    eA = exp(A)
-    eB = exp(B)
+    eA = np.exp(A)
+    eB = np.exp(B)
     lz = logistic(z)
     good = (0<x)&(x<=0.5)
     xg = x[good]
