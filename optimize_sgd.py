@@ -70,7 +70,7 @@ grad_target = lambda pars, arglist: -1.0*gradfun(pars, arglist)
 
 alpha = 0.01
 niter = 10000
-batch_size = 10
+batch_size = 100
 
 W = pars.copy()
 Wprev = W.copy()
@@ -84,6 +84,7 @@ while True:
     batches = np.array_split(permuted_args, split_at)
     for batch in batches:
         Wgrad = grad_target(W, batch)
+        Wgrad = np.sum(Wgrad, axis=0)
 
         # if Wgrad is nan, take the previous parameters and reupdate them with
         # a learning rate divided by two.
