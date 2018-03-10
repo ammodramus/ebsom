@@ -29,7 +29,7 @@ def get_lpf(params, x):
     lpf[x==0.0] = np.log(lz)
     good = (0<x)&(x<=0.5)
     xg = x[good]
-    lpf[good] = eA*log(2) + (eB-1)*np.log(1-2*xg) + (eA-1)*np.log(xg) + log(1-lz) - log(beta(eA,eB))
+    lpf[good] = eA*np.log(2) + (eB-1)*np.log(1-2*xg) + (eA-1)*np.log(xg) + np.log(1-lz) - np.log(beta(eA,eB))
     return lpf
 
 def get_gradient(params, x):
