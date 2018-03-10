@@ -34,22 +34,24 @@ for i, reg in enumerate(regkeys):
     blims[reg] = (low, high)
 
 nbetas = len(regkeys)*3*rowlen
-npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
+#npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
+betas = npr.uniform(-0.1,0.1, size=nbetas)
 num_pf_params = 3
 a, b, z = -1, 0.5, -0.5
 pars = np.concatenate((betas, (a,b,z)))
 
+import argparse
 import schwimmbad
 parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter))
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-processes', type = int)
 parser.add_argument('--mpi', action = 'store_true')
 args = parser.parse_args()
-if parser.num_processes is not None:
+if args.num_processes is not None:
     pool = schwimmbad.MultiPool(args.num_processes)
 elif args.mpi:
     pool = schwimmbad.MPIPool()
-    if not pool_is_master():
+    if not pool.is_master():
         pool.wait()
         sys.exit(0)
 else:
@@ -68,7 +70,7 @@ grad_target = lambda pars, arglist: -1.0*gradfun(pars, arglist)
 
 alpha = 0.01
 niter = 10000
-batch_size = 100
+batch_size = 10
 
 W = pars.copy()
 Wprev = W.copy()
@@ -82,10 +84,15 @@ while True:
     batches = np.array_split(permuted_args, split_at)
     for batch in batches:
         Wgrad = grad_target(W, batch)
+        Wgrad = np.sum(Wgrad,0)
 
         # if Wgrad is nan, take the previous parameters and reupdate them with
         # a learning rate divided by two.
 
+        if np.any(~np.isfinite(Wgrad)):
+            import pdb; pdb.set_trace()
+
+        '''
         while np.any(np.isnan(Wgrad)):
             c = 2.0
             while True:
@@ -94,6 +101,7 @@ while True:
                 if not np.any(np.isnan(Wgrad)):
                     break
                 c *= 2.0
+        '''
         Wgrad_prev = Wgrad[:]
         Wprev[:] = W[:]
         W += -alpha * Wgrad
