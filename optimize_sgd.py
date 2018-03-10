@@ -84,13 +84,12 @@ while True:
     batches = np.array_split(permuted_args, split_at)
     for batch in batches:
         Wgrad = grad_target(W, batch)
-        Wgrad = np.sum(Wgrad,0)
 
         # if Wgrad is nan, take the previous parameters and reupdate them with
         # a learning rate divided by two.
 
         if np.any(~np.isfinite(Wgrad)):
-            import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()  # will want to debug!
 
         '''
         while np.any(np.isnan(Wgrad)):

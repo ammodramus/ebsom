@@ -535,6 +535,14 @@ def get_args(lo, mm):
                 major, minor = mm[ref][bam][position]
                 if major == 'N':
                     continue
+                found = False
+                for i in [0,1]:
+                    for j in [0,1]:
+                        if locobs[i][j].shape[0] > 0:
+                            found = True
+                            break
+                if not found:
+                    continue
                 args.append([locobs, major, minor])
     return args
 
@@ -563,9 +571,9 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, regs, po
                     l1mf, logpf_grad, num_pf_params) for locobs, major, minor
                 in argslist
                 ]
-        grads = pool.map(loc_gradient_wrapper, loc_gradient_args)
+        grads = np.array(pool.map(loc_gradient_wrapper, loc_gradient_args))
         grad = np.sum(grads, axis = 0)
-        return grad
+        return grads
 
     return f
 
