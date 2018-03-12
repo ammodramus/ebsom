@@ -90,6 +90,8 @@ cdef double logsumexp_double_counts(double *x, unsigned int *counts, int n, doub
         return v
 
 cdef void collect_alpha_delta_log_summands(
+#cpdef void collect_alpha_delta_log_summands(
+#def collect_alpha_delta_log_summands(
         int X_idx,
         int designated_outcome,
         int [:,::1] lo,
@@ -123,10 +125,10 @@ cdef void collect_alpha_delta_log_summands(
             if count <= 0:
                 continue
             if Xi == 0.0:
-                for j in range(nfs):
-                    log_alpha_log_summands = l_log_alpha_log_summands[j]
-                    log_alpha_log_summands.append(-INFINITY, count)
-                continue
+                continue  # rather than append -INFINITY to a vector to be logsumexp'd, just skip it
+                #for j in range(nfs):
+                #log_alpha_log_summands = l_log_alpha_log_summands[j]
+                #log_alpha_log_summands.append(-INFINITY, count)
                 
             tlpA = lpA[lp_idx,observed_outcome]
             tlpa = lpa[lp_idx,observed_outcome]
@@ -153,11 +155,11 @@ cdef void collect_alpha_delta_log_summands(
                 logsummand += logsummand_nof
 
                 # now add to log_alpha and log_delta
-                log_alpha_log_summands = l_log_alpha_log_summands[j]
-                log_delta_log_summands = l_log_delta_log_summands[j]
                 if sign == 1:
+                    log_alpha_log_summands = l_log_alpha_log_summands[j]
                     log_alpha_log_summands.append(logsummand, count)
                 else:
+                    log_delta_log_summands = l_log_delta_log_summands[j]
                     #assert sign == -1
                     log_delta_log_summands.append(logsummand, count)
 
@@ -401,9 +403,10 @@ def loc_gradient(
                     bf_is_pos = False
                 logabsbf = M + log(1-exp(m-M))
                 if isnan(logabsbf):
-                    logabsbf = -INFINITY
+                    continue   # instead of appending -INFINITY to logsummands, just continue
+                    #logabsbf = -INFINITY
                 #printf("cy %i %i %f\n", bidx, fidx, logabsbf)
-                v = logaf[fidx] + logabsbf
+                #v = logaf[fidx] + logabsbf
                 #printf("cy %i %i %f\n", bidx, fidx, v)
                 #if not (isfinite(log_alpha) and isfinite(log_delta)):
                 #    continue
@@ -512,18 +515,9 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     locobs = lo[ref][bam][position]
     major, minor = mm[ref][bam][position]
 
-    nfs = lf.shape[0]
-    logaf_b = np.zeros(nfs)
-
-    if minor != 'N':
-        loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
-                logpf, lf, l1mf, logpf_grad, logaf_b, num_pf_params)
-        return loc_grad
-    else:
-        loc_grad = loc_gradient_Nminor(params, cm, logprobs, locobs, major,
-                minor, blims, logpf, lf, l1mf, logpf_grad, logaf_b,
-                num_pf_params)
-        return loc_grad
+    loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
+            logpf, lf, l1mf, logpf_grad, num_pf_params)
+    return loc_grad
 
 
 def get_args(lo, mm):
