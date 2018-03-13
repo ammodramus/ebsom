@@ -41,15 +41,20 @@ if __name__ == '__main__':
     loc = 0
 
     import schwimmbad
-    pool = schwimmbad.MultiPool(10)
+    pool = schwimmbad.MultiPool(4)
 
     #grad = cygradient.gradient(pars, cm, lo, all_majorminor, blims, rowlen,
     #        f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
     #for g in grad:
     #    print g
-    ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, lf,
-            l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
-    print ll
+    #ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, lf,
+    #        l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
+    #print ll
+
+    grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen,
+            f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
+    for g in grad:
+        print g
 
     #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
     #from scipy.optimize import approx_fprime
@@ -58,16 +63,19 @@ if __name__ == '__main__':
     #    print ng
 
     #import line_profiler
-    #prof = line_profiler.LineProfiler(cygradient.gradient_make_buffers, cygradient.loc_gradient, cygradient.collect_alpha_delta_log_summands)
-    #prof.runcall(cygradient.gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)
+    #prof = line_profiler.LineProfiler(cygradient.collect_alpha_delta_log_summands)
+    #prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
     #prof.print_stats()
 
+    #def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
+    #        rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
 
     #import cProfile
-    #cProfile.runctx("cygradient.gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, freqs, breaks, lf, l1mf, regkeys)", globals(), locals(), "Profile.prof")
+    #cProfile.runctx("cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)", globals(), locals(), "Profile.prof")
     #import pstats
     #s = pstats.Stats("Profile.prof")
     #s.strip_dirs().sort_stats("time").print_stats()
+
 
 
     #from likelihood import single_locus_log_likelihood

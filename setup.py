@@ -35,7 +35,9 @@ extensions = [
         include_dirs = [np.get_include()],
         extra_compile_args = ['-march=native']),
     Extension("doublevec", ["doublevec.pyx"]),
-    Extension("doubleveccounts", ["doubleveccounts.pyx"])
+    Extension("doubleveccounts", ["doubleveccounts.pyx"]),
+    #Extension("cyglobal", ["cyglobal.pyx"], define_macros=[('CYTHON_TRACE',1)])
+    Extension("cyglobal", ["cyglobal.pyx"])
 ]
 setup(
     ext_modules = cythonize(extensions),
