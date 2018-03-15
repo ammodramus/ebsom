@@ -66,6 +66,7 @@ def combine_locobs(locobs, mm):
 
 if __name__ == '__main__':
     cm, lo, mm = dd.io.load('empirical_onecm.h5')
+    #cm, lo, mm = dd.io.load('testdata.h5')
     cm, cm_minmaxes = ut.normalize_covariates(cm)
 
     clo = combine_locobs(lo, mm)
@@ -81,10 +82,12 @@ if __name__ == '__main__':
     nbetas = len(regkeys)*3*rowlen
     npr.seed(0); betas = npr.uniform(-0.2,0.2, size=nbetas)
     num_pf_params = 3
-    a, b, z = -1, 0.5, -0.5
+    #a, b, z = -1, 0.5, -0.5
     #pars = np.concatenate((betas, (a,b,z)))
+    #betas = np.loadtxt('global_params_1.txt')
     pars = betas
 
+    #print cyglobal.calc_global_likelihood(pars, cm, clo, blims)
     import scipy.optimize as opt
 
     def ll_target(pars):
