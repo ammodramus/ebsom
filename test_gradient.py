@@ -13,7 +13,8 @@ f = bws.get_freqs(num_f)
 lf = np.log(f)
 l1mf = np.log(1-f)
 
-cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
+#cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
+cm, lo, all_majorminor = dd.io.load('testdata.h5')
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
 bam_fns = lo['chrM'].keys()
@@ -29,9 +30,10 @@ for i, reg in enumerate(regkeys):
     blims[reg] = (low, high)
 
 nbetas = len(regkeys)*3*rowlen
-npr.seed(0); betas = npr.uniform(-0.2,0.2, size=nbetas)
+#npr.seed(0); betas = npr.uniform(-0.2,0.2, size=nbetas)
+betas = np.loadtxt('global_params_1.txt')
 num_pf_params = 3
-a, b, z = -1, 0.5, -0.5
+a, b, z = 2, 0.5, 100
 #a, b, z = 0,0,0
 #a, b, z = -1, -1, -2
 pars = np.concatenate((betas, (a,b,z)))
@@ -41,20 +43,21 @@ if __name__ == '__main__':
     loc = 0
 
     import schwimmbad
-    pool = schwimmbad.MultiPool(4)
+    #pool = schwimmbad.MultiPool(4)
+    pool = schwimmbad.SerialPool()
 
     #grad = cygradient.gradient(pars, cm, lo, all_majorminor, blims, rowlen,
     #        f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
     #for g in grad:
     #    print g
-    #ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, lf,
-    #        l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
-    #print ll
+    ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, lf,
+            l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
+    print ll
 
-    grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen,
-            f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
-    for g in grad:
-        print g
+    #grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen,
+    #        f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
+    #for g in grad:
+    #    print g
 
     #likefun = lambda x: gradient.grad_locus_log_likelihood(x, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
     #from scipy.optimize import approx_fprime
