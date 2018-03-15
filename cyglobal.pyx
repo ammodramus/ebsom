@@ -28,6 +28,8 @@ def calc_global_likelihood(
     ll = 0.0
     for regkey in obs.keys():
         major, readnum = regkey
+        if len(obs[regkey]) == 0:   # may not have observations for all regressions, esp in small cases
+            continue
         regobs = obs[regkey]
         low, high = blims[regkey]
         b = params[low:high].reshape((rowlen,-1), order = 'F')
@@ -36,9 +38,10 @@ def calc_global_likelihood(
         logprobs = Xb
         for obs_idx in range(regobs.shape[0]):
             for j in range(4):
-                obs_count = regobs[obs_idx,j]
+                obs_count = regobs[obs_idx,j+1]
+                cm_idx = regobs[obs_idx,0]
                 if obs_count > 0:
-                    ll += logprobs[obs_idx, j]*obs_count
+                    ll += logprobs[cm_idx, j]*obs_count
     return ll
 
 def calc_global_gradient(
