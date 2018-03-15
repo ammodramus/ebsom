@@ -51,7 +51,7 @@ def calc_global_gradient(
         dict blims):
 
     cdef:
-        int rowlen, obs_idx, j, obs_count, param_idx, low, high, param_outcome, param_row_idx, obs_outcome
+        int rowlen, obs_idx, j, obs_count, param_idx, low, high, param_outcome, param_row_idx, obs_outcome, cm_idx
         dict reflo, bamlo
         int [:,:] regobs 
         double [:,:] logprobs
@@ -61,6 +61,8 @@ def calc_global_gradient(
     cdef double [:] grad = grad_np
     for regkey in obs.keys():
         major, readnum = regkey
+        if len(obs[regkey]) == 0:
+            continue
         regobs = obs[regkey]
         low, high = blims[regkey]
         b = params[low:high].reshape((rowlen,-1), order = 'F')
@@ -69,13 +71,14 @@ def calc_global_gradient(
         logprobs = Xb
         for obs_idx in range(regobs.shape[0]):
             for obs_outcome in range(4):
-                obs_count = regobs[obs_idx,obs_outcome]
+                obs_count = regobs[obs_idx,obs_outcome+1]
+                cm_idx = regobs[obs_idx, 0]
                 if obs_count > 0:
                     for param_idx in range(low,high):
                         param_outcome = (param_idx-low) // rowlen
                         param_row_idx = (param_idx-low) % rowlen
-                        x = X[obs_idx,param_row_idx]
-                        prob_term = -1 * exp(logprobs[obs_idx,param_outcome])
+                        x = X[cm_idx,param_row_idx]
+                        prob_term = -1 * exp(logprobs[cm_idx,param_outcome])
                         if obs_outcome == param_outcome:
                             prob_term += 1
                         grad[param_idx] += x*prob_term*obs_count
