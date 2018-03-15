@@ -282,6 +282,7 @@ def ll(params, cm, lo, mm, blims, rowlen, freqs, lf, l1mf,
             for position in range(len(lo[ref][bam])):
                 locobs = lo[ref][bam][position]
                 major, minor = mm[ref][bam][position]
+                major, minor = str(major), str(minor)
                 if major == 'N':
                     continue
                 args.append((params, cm, logprobs, locobs, major, minor, blims,
