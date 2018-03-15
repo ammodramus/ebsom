@@ -97,5 +97,5 @@ if __name__ == '__main__':
         return v
     grad_target = lambda pars: -1*cyglobal.calc_global_gradient(pars, cm, clo, blims)
 
-    res = opt.minimize(ll_target, pars, method = 'BFGS', jac = grad_target)
+    res = opt.minimize(ll_target, pars, method = 'L-BFGS-B', jac = grad_target)
     print res
