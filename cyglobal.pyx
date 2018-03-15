@@ -17,7 +17,7 @@ def calc_global_likelihood(
         dict blims):
 
     cdef:
-        int rowlen, obs_idx, j, obs_count
+        int rowlen, obs_idx, j, obs_count, cm_idx
         dict reflo, bamlo
         int [:,:] regobs 
         double [:,:] logprobs
