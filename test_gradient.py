@@ -5,11 +5,12 @@ import afd
 import gradient
 import cygradient
 import cylikelihood
-import beta_with_spikes as bws
+import beta_with_spikes_integrated as bws
 import util
 
 num_f = 100
 f = bws.get_freqs(num_f)
+v = bws.get_window_boundaries(num_f)
 lf = np.log(f)
 l1mf = np.log(1-f)
 
@@ -46,11 +47,11 @@ if __name__ == '__main__':
     #pool = schwimmbad.MultiPool(4)
     pool = schwimmbad.SerialPool()
 
-    #grad = cygradient.gradient(pars, cm, lo, all_majorminor, blims, rowlen,
-    #        f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
     #for g in grad:
     #    print g
-    ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, lf,
+#def ll(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
+#        regs, num_f, num_pf_params, pool):
+    ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
             l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
     print ll
 

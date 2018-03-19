@@ -12,7 +12,7 @@ from libc.stdio cimport printf
 from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
 from doubleveccounts cimport DoubleVecCounts
-import beta_with_spikes as bws
+import beta_with_spikes_integrated as bws
 
 import numpy as np
 from scipy.special import logsumexp
@@ -500,8 +500,10 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     betas = params[:-num_pf_params]
     pf_params = params[-num_pf_params:]
     f = freqs
-    logpf = bws.get_lpf(pf_params, f)
-    logpf_grad = bws.get_gradient(pf_params,f)
+    v = bws.get_gradient_window_boundaries(f.shapes[0])
+    logpf = bws.get_lpf(pf_params, f, v)
+
+    logpf_grad = bws.get_gradient(pf_params,f,v)
 
     logprobs = {}
     X = cm
@@ -543,15 +545,16 @@ def get_args(lo, mm):
 # what we want:
 #  - a function that takes a list of (locobs, major, minor) and returns the
 #    gradient, calculated using the pool
-def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, regs, pool):
+def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, windows, regs, pool):
     rowlen = cm.shape[1]
 
     def f(params, argslist):
         betas = params[:-num_pf_params]
         pf_params = params[-num_pf_params:]
         f = freqs
-        logpf = bws.get_lpf(pf_params, f)
-        logpf_grad = bws.get_gradient(pf_params,f)
+        v = windows
+        logpf = bws.get_lpf(pf_params, f, v)
+        logpf_grad = bws.get_gradient(pf_params,f,v)
         logprobs = {}
         X = cm
         for reg in regs:
@@ -571,13 +574,14 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, regs, po
 
     return f
 
-def gradient(params, cm, lo, mm, blims, rowlen, freqs, lf, l1mf,
+def gradient(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
         regs, num_f, num_pf_params, pool):
     betas = params[:-num_pf_params]
     pf_params = params[-num_pf_params:]
     f = freqs
-    logpf = bws.get_lpf(pf_params, f)
-    logpf_grad = bws.get_gradient(pf_params,f)
+    v = windows
+    logpf = bws.get_lpf(pf_params, f, v)
+    logpf_grad = bws.get_gradient(pf_params,f, v)
 
     logprobs = {}
     X = cm

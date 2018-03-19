@@ -6,12 +6,13 @@ import afd
 import gradient
 import cygradient
 import cylikelihood
-import beta_with_spikes as bws
+import beta_with_spikes_integrated as bws
 import util
 import sys
 
 num_f = 100
 f = bws.get_freqs(num_f)
+v = bws.get_window_boundaries(num_f)
 lf = np.log(f)
 l1mf = np.log(1-f)
 
@@ -47,13 +48,13 @@ pool = schwimmbad.MultiPool(10)
 #    sys.exit(0)
 
 def likefun(p):
-    v = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, lf,
+    val = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
             l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
-    pstr = "\t".join([str(v)] + [str(el) for el in p])
+    pstr = "\t".join([str(val)] + [str(el) for el in p])
     print pstr + '\n',
-    return v
+    return val
 
-gradfun = lambda p: -1.0*cygradient.gradient(p, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
+gradfun = lambda p: -1.0*cygradient.gradient(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
 
 res = opt.minimize(fun = likefun, x0 = pars, method = 'L-BFGS-B', jac = gradfun, options = {'maxiter': 5000})
 #res = opt.minimize(fun = likefun, x0 = pars, method = 'Newton-CG', jac = gradfun, options = {'maxiter': 5000})

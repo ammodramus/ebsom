@@ -12,7 +12,7 @@ from libc.stdio cimport printf
 from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
 from doubleveccounts cimport DoubleVecCounts
-import beta_with_spikes as bws
+import beta_with_spikes_integrated as bws
 
 import numpy as np
 from scipy.special import logsumexp
@@ -260,12 +260,13 @@ def loc_ll_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
 
 
 @cython.wraparound(True)
-def ll(params, cm, lo, mm, blims, rowlen, freqs, lf, l1mf,
+def ll(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
         regs, num_f, num_pf_params, pool):
     betas = params[:-num_pf_params]
     pf_params = params[-num_pf_params:]
     f = freqs
-    logpf = bws.get_lpf(pf_params, f)
+    v = windows
+    logpf = bws.get_lpf(pf_params, f, windows)
 
     logprobs = {}
     X = cm
