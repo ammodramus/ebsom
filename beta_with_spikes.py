@@ -48,5 +48,6 @@ def get_gradient(params, x):
     M[good,1] = eB*(np.log(1-2*xg)-digamma(eB)+digamma(eA+eB))
     # for z
     M[good,2] = Dlogistic(z)/(lz-1)
-    M[x==0.0,2] = Dlogistic(z)
+    #M[x==0.0,2] = Dlogistic(z)  # this was a bug: forgot about log before D
+    M[x==0.0,2] = 1/(1+np.exp(z))
     return M
