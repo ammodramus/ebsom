@@ -55,8 +55,8 @@ def likefun(p):
 
 gradfun = lambda p: -1.0*cygradient.gradient(p, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
 
-#res = opt.minimize(fun = likefun, x0 = pars, method = 'L-BFGS-B', jac = gradfun, options = {'maxiter': 5000})
+res = opt.minimize(fun = likefun, x0 = pars, method = 'L-BFGS-B', jac = gradfun, options = {'maxiter': 5000})
 #res = opt.minimize(fun = likefun, x0 = pars, method = 'Newton-CG', jac = gradfun, options = {'maxiter': 5000})
-res = opt.minimize(fun = likefun, x0 = pars, method = 'BFGS', jac = gradfun, options = {'maxiter': 5000})
+#res = opt.minimize(fun = likefun, x0 = pars, method = 'BFGS', jac = gradfun, options = {'maxiter': 5000})
 resstr = '#' + '\t'.join([str(el) for el in res.x])
 print resstr + '\n',
