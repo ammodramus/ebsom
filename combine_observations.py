@@ -93,9 +93,15 @@ if __name__ == '__main__':
     def ll_target(pars):
         v = -1*cyglobal.calc_global_likelihood(pars, cm, clo, blims)
         pstr = "\t".join([str(v)] + [str(el) for el in pars])
-        print pstr + '\n',
+        #print pstr + '\n',
         return v
     grad_target = lambda pars: -1*cyglobal.calc_global_gradient(pars, cm, clo, blims)
 
+
+    #from scipy.optimize import approx_fprime
+    #approxgrad = approx_fprime(pars, ll_target, 1e-6)
+    #numgrad = grad_target(pars)
+    #for a, n in zip(approxgrad, numgrad):
+    #    print '{}\t{}'.format(a,n)
     res = opt.minimize(ll_target, pars, method = 'L-BFGS-B', jac = grad_target)
     print res
