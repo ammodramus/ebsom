@@ -44,6 +44,7 @@ def get_lpf(params, x, window_boundaries = None):
     lpf = np.concatenate(((np.log(z),), np.log(pf)))
     return lpf
 
+'''
 def get_gradient(params, x, window_boundaries = None, eps = 1e-7):
     v = window_boundaries
     if v is None:
@@ -104,4 +105,37 @@ def get_gradient(params, x, window_boundaries = None, eps = 1e-7):
     ret[1:,1] = Dlpf_B
     ret[1:,2] = Dlpf_z
     ret[0,2] = 1/(1+np.exp(expitz))
+    return ret
+'''
+
+
+def get_gradient(params, x, window_boundaries = None, eps = 1e-7):
+    v = window_boundaries
+    if v is None:
+        raise ValueError('must provide window_boundaries')
+
+    eps2 = 2*eps
+
+    params_pA = params + (eps,0,0)
+    params_mA = params - (eps,0,0)
+    lpf_pA = get_lpf(params_pA, x, v)
+    lpf_mA = get_lpf(params_mA, x, v)
+    DlpfA = (lpf_pA - lpf_mA) / eps2
+
+    params_pB = params + (0,eps,0)
+    params_mB = params - (0,eps,0)
+    lpf_pB = get_lpf(params_pB, x, v)
+    lpf_mB = get_lpf(params_mB, x, v)
+    DlpfB = (lpf_pB - lpf_mB) / eps2
+
+    params_pz = params + (0,0,eps)
+    params_mz = params - (0,0,eps)
+    lpf_pz = get_lpf(params_pz, x, v)
+    lpf_mz = get_lpf(params_mz, x, v)
+    Dlpfz = (lpf_pz - lpf_mz) / eps2
+    
+    ret = np.zeros((np.asarray(x).shape[0], np.asarray(params).shape[0]))
+    ret[:,0] = DlpfA
+    ret[:,1] = DlpfB
+    ret[:,2] = Dlpfz
     return ret
