@@ -4,7 +4,7 @@ from scipy.special import logsumexp
 import likelihood as lik
 import afd
 import util as ut
-import beta_with_spikes as bws
+import beta_with_spikes_integrated as bws
 
 
 @jit
@@ -554,7 +554,8 @@ def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
         rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
     betas = params[:-num_pf_params]
     f_params = params[-num_pf_params:]
-    logpf = bws.get_lpf(f_params, freqs)
+    windows = bws.get_window_boundaries(num_f)
+    logpf = bws.get_lpf(f_params, freqs, windows)
     logprobs = {}
     X = cm
     for reg in regs:
