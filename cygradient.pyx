@@ -500,7 +500,7 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     betas = params[:-num_pf_params]
     pf_params = params[-num_pf_params:]
     f = freqs
-    v = bws.get_gradient_window_boundaries(f.shapes[0])
+    v = bws.get_window_boundaries(f.shape[0])
     logpf = bws.get_lpf(pf_params, f, v)
 
     logpf_grad = bws.get_gradient(pf_params,f,v)
@@ -516,6 +516,7 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
 
     locobs = lo[ref][bam][position]
     major, minor = mm[ref][bam][position]
+    major, minor = bytes(major), bytes(minor)
 
     loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
             logpf, lf, l1mf, logpf_grad, num_pf_params)
