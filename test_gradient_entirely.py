@@ -35,11 +35,12 @@ for i, reg in enumerate(regkeys):
     blims[reg] = (low, high)
 
 nbetas = len(regkeys)*3*rowlen
-npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
+#npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
 #betas = np.zeros(nbetas)
 num_pf_params = 3
-a, b, z = -1, 0.5, -0.5
-pars = np.concatenate((betas, (a,b,z)))
+#a, b, z = -1, 0.5, -0.5
+#pars = np.concatenate((betas, (a,b,z)))
+pars = np.loadtxt('bestfreqparams')
 
 import schwimmbad
 pool = schwimmbad.MultiPool(10)
@@ -66,7 +67,7 @@ ngrads = []
 eps = 1e-6
 for i in range(pars.shape[0]-3, pars.shape[0]):
     pars_eps = pars.copy()
-    pars[i] += eps
+    pars_eps[i] += eps
     eps_ll = likefun(pars_eps)
     ll_pars_eps.append(eps_ll)
     ngrads.append((eps_ll-ll_pars)/eps)
