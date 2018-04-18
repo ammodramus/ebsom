@@ -35,10 +35,11 @@ for i, reg in enumerate(regkeys):
     blims[reg] = (low, high)
 
 nbetas = len(regkeys)*3*rowlen
-npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
+#npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
+betas = np.loadtxt('global_params_1.txt')
 #betas = np.zeros(nbetas)
 num_pf_params = 3
-a, b, z = -1, 0.5, -0.5
+a, b, z = -1, 0.5, 4
 pars = np.concatenate((betas, (a,b,z)))
 
 import schwimmbad
