@@ -276,7 +276,7 @@ def sort_lo(lo):
 
 def normalize_covariates(cm):
     retcm = cm.copy()
-    min_maxes = []
+    min_maxes = [(1,1)]
     # starting with second column because first is constant!
     for j in range(1,cm.shape[1]):
         m = retcm[:,j].min()
