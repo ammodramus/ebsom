@@ -68,6 +68,36 @@ if __name__ == '__main__':
     cm, lo, mm = dd.io.load('empirical_onecm.h5')
     #cm, lo, mm = dd.io.load('testdata.h5')
     cm, cm_minmaxes = ut.normalize_covariates(cm)
+    for m, M in cm_minmaxes:
+        print '# mM {}\t{}'.format(m,M)
+
+    import argparse
+
+    parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--start-locus', type = int, help = 'index of first locus to consider for debugging (zero-based)')
+    parser.add_argument('--end-locus', type = int, help = 'index of last locus to consider for debugging (zero-based, inclusive)')
+    parser.add_argument('--num-processes', type = int, default = 1)
+    parser.add_argument('--init-params', type = str, help = 'filename of file containing list of initial parameters')
+    args = parser.parse_args()
+
+    if args.start_locus is not None:
+        bam_fns = lo['chrM'].keys()
+
+        if args.end_locus is None:
+            raise Exception('must provide both --start-locus and --end-locus')
+        bam = bam_fns[0]  # assume we want the first bam?
+        lotmp = {}
+        lotmp['chrM'] = {}
+        lotmp['chrM'][bam] = []
+        mmtmp = {}
+        mmtmp['chrM'] = {}
+        mmtmp['chrM'][bam] = []
+        for locidx in range(args.start_locus, args.end_locus+1):
+            lotmp['chrM'][bam].append(lo['chrM'][bam][locidx])
+            mmtmp['chrM'][bam].append(mm['chrM'][bam][locidx])
+        lo = lotmp
+        mm = mmtmp
 
     clo = combine_locobs(lo, mm)
 
@@ -93,7 +123,7 @@ if __name__ == '__main__':
     def ll_target(pars):
         v = -1*cyglobal.calc_global_likelihood(pars, cm, clo, blims)
         pstr = "\t".join([str(v)] + [str(el) for el in pars])
-        #print pstr + '\n',
+        print pstr + '\n',
         return v
     grad_target = lambda pars: -1*cyglobal.calc_global_gradient(pars, cm, clo, blims)
 
@@ -105,3 +135,5 @@ if __name__ == '__main__':
     #    print '{}\t{}'.format(a,n)
     res = opt.minimize(ll_target, pars, method = 'L-BFGS-B', jac = grad_target)
     print res
+    resstr = '#' + '\t'.join([str(el) for el in res.x])
+    print resstr + '\n',
