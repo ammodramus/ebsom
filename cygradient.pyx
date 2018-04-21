@@ -282,9 +282,11 @@ def loc_gradient(
         for fidx in range(nfs):
             if sign_Dlogpf[fidx,i] == 1:
                 log_pos_summands_Dlogpf.append(logaf[fidx] + logabs_Dlogpf[fidx,i])
+                #print '({}) pos: {}'.format(fidx, logaf[fidx] + logabs_Dlogpf[fidx,i])
             else:
                 assert sign_Dlogpf[fidx,i] == -1
                 log_neg_summands_Dlogpf.append(logaf[fidx] + logabs_Dlogpf[fidx,i])
+                #print '({}) neg: {}'.format(fidx, logaf[fidx] + logabs_Dlogpf[fidx,i])
         lse_pos = logsumexp_double(log_pos_summands_Dlogpf.data,
                                    log_pos_summands_Dlogpf.size,
                                    log_pos_summands_Dlogpf.cur_max)
@@ -295,6 +297,8 @@ def loc_gradient(
             grad[nbetas+i] = exp(lse_pos + np.log(1-np.exp(lse_neg-lse_pos)) - logsumexplogaf)
         else:
             grad[nbetas+i] = -exp(lse_neg + np.log(1-np.exp(lse_pos-lse_neg)) - logsumexplogaf)
+        if isnan(grad[nbetas+i]):
+            grad[nbetas+i] = 0.0
 
     # a_f is the same for all parameters. now have to calculate b_f for each
     # parameter.
@@ -604,6 +608,9 @@ def gradient(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
                 args.append((params, cm, logprobs, locobs, major, minor, blims,
                     logpf, lf, l1mf, logpf_grad, num_pf_params))
 
-    grads = pool.map(loc_gradient_wrapper, args)
-    grad = np.sum(grads, axis = 0)
+    if len(args) == 0:
+        grad = np.zeros_like(params)
+    else:
+        grads = pool.map(loc_gradient_wrapper, args)
+        grad = np.sum(grads, axis = 0)
     return grad
