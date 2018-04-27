@@ -10,29 +10,15 @@ from cylocobs cimport LocObs
 from cyregcov cimport RegCov
 from cyrowmaker cimport CyCovariateRowMaker
 
-cdef const char *BASES = 'ACGT'
-cdef inline int get_base_idx(bytes obsbase, bytes true):
+cdef bytes BASES = b'ACGT'
+cdef inline int get_base_idx(bytes obsbase):
     cdef:
-        int i, found
-        char o, t, c
+        int i
     o = obsbase[0]
-    t = true[0]
-    if o == t:
-        return 3   # last column
-
-    found = 0
     for i in range(4):
-        c = BASES[i]
-        if c == o:
-            return i-found
-        if c == t:
-            found = 1
+        if o == BASES[i]:
+            return i
     return -1
-
-# obs true   seq   found  i  ret
-# A   G      ACTG  0      0  0
-# T   C      AGTC  1      3  2
-
 
 def add_observations(
         AlignedSegment read,
@@ -95,8 +81,9 @@ def add_observations(
         if reverse:
             major = cut.rev_comp(major)
         cov_idx = covariate_matrix.set_default(row)
-        base_idx = get_base_idx(obsbase, major)
+        base_idx = get_base_idx(obsbase)
         if base_idx < 0 or base_idx > 3:
+            print(obsbase)
             raise ValueError('invalid base')
         revidx = int(reverse)
         ridx = readnum-1
