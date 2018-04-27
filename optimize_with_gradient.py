@@ -19,8 +19,6 @@ l1mf = np.log(1-f)
 cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
-
-
 for m, M in cm_minmaxes:
     print '# mM {}\t{}'.format(m,M)
 
@@ -32,8 +30,6 @@ for bam in bam_fns:
     for bl in badloci:
         all_majorminor['chrM'][bam][bl] = ('N', 'N')
         lo['chrM'][bam][bl] = [[[],[]], [[],[]]]
-
-#lo = util.sort_lo(lo)
 
 regkeys = [(b, r) for b in 'ACGT' for r in (1,2)]
 rowlen = cm.shape[1]
