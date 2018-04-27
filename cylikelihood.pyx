@@ -258,6 +258,38 @@ def loc_ll_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
     lsell = logsumexp(lls)
     return lsell - np.log(3.0)
 
+def get_args_debug(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf, regs,
+        num_f, num_pf_params):
+    betas = params[:-num_pf_params]
+    pf_params = params[-num_pf_params:]
+    f = freqs
+    v = windows
+    logpf = bws.get_lpf(pf_params, f, windows)
+
+    logprobs = {}
+    X = cm
+    for reg in regs:
+        low, high = blims[reg]
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+        Xb -= logsumexp(Xb, axis = 1)[:,None]
+        logprobs[reg] = Xb
+
+    args = []
+    loc_info = []
+    for ref in lo.keys():
+        for bam in lo[ref].keys():
+            for position in range(len(lo[ref][bam])):
+                locobs = lo[ref][bam][position]
+                major, minor = mm[ref][bam][position]
+                major, minor = str(major), str(minor)
+                if major == 'N':
+                    continue
+                args.append((params, cm, logprobs, locobs, major, minor, blims,
+                    logpf, lf, l1mf))
+                loc_info.append((ref, bam, position))
+    return args, loc_info
+
 
 @cython.wraparound(True)
 def ll(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
