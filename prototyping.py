@@ -42,21 +42,22 @@ parser.add_argument('--load-data-from',
         help = 'load data from previously saved HDF5 file')
 parser.add_argument('--no-mapq', action = 'store_true',
         help = 'do not use map qualities')
+parser.add_argument('--min-coverage', type = int, default = 20)
 args = parser.parse_args()
 min_bq = args.min_bq
 min_mq = args.min_mq
 context_len = args.context_length
 
+# break bam names into prefix/name
 prefix, bam_fns, bams = ut.get_bams(args.bams)
 ref_names = ut.get_ref_names(args.references, bams)
 
-# break bam names into prefix/name
 print('getting counts')
 all_counts = ut.get_all_counts(bams, ref_names, min_bq)
 print('getting freqs')
 all_freqs = ut.get_freqs(all_counts)
 print('getting consensus')
-all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = 20)
+all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = args.min_coverage)
 print('getting major-minor')
 all_majorminor = ut.get_all_majorminor(all_counts)
 
@@ -84,14 +85,15 @@ if args.load_data_from is None:
 
     cm = ut.collect_covariate_matrices(covariate_matrices)
     lo = ut.collect_loc_obs(locus_observations)
-
+    # they're all the same...
+    cm_names = row_makers[ref][bam_fn].get_covariate_names()
             
     if args.save_data_as is not None:
         try:
             import deepdish as dd
         except ImportError:
             raise ImportError('saving output requires deepdish')
-        data = (cm, lo, all_majorminor)
+        data = (cm, lo, all_majorminor, cm_names)
 
         import warnings
         with warnings.catch_warnings():
