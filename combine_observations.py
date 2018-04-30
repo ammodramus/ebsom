@@ -65,11 +65,18 @@ def combine_locobs(locobs, mm):
     return all_list
 
 if __name__ == '__main__':
-    cm, lo, mm = dd.io.load('empirical_onecm.h5')
-    #cm, lo, mm = dd.io.load('testdata.h5')
+    cm, lo, mm, colnames = dd.io.load('data_reordered.h5')
     cm, cm_minmaxes = ut.normalize_covariates(cm)
     for m, M in cm_minmaxes:
         print '# mM {}\t{}'.format(m,M)
+
+    
+    bam_fns = lo['chrM'].keys()
+    badloci = np.loadtxt('badloci.txt').astype(np.int)-1
+    for bam in bam_fns:
+        for bl in badloci:
+            mm['chrM'][bam][bl] = ('N', 'N')
+            lo['chrM'][bam][bl] = [[[],[]], [[],[]]]
 
     import argparse
 
