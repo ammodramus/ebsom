@@ -34,7 +34,7 @@ nbetas = len(regkeys)*3*rowlen
 #npr.seed(0); betas = npr.uniform(-0.2,0.2, size=nbetas)
 betas = np.loadtxt('global_params_1.txt')
 num_pf_params = 3
-a, b, z = 2, 0.5, 100
+a, b, z = 2, 0.5, -4
 #a, b, z = 0,0,0
 #a, b, z = -1, -1, -2
 pars = np.concatenate((betas, (a,b,z)))
@@ -49,11 +49,9 @@ if __name__ == '__main__':
 
     #for g in grad:
     #    print g
-#def ll(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
-#        regs, num_f, num_pf_params, pool):
-    ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
-            l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
-    print ll
+    #ll = cylikelihood.ll(pars, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
+    #        l1mf, regkeys, num_f=100, num_pf_params=3, pool=pool)
+    #print ll
 
     #grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen,
     #        f, lf, l1mf, regkeys, num_f=100,num_pf_params=3)
@@ -66,10 +64,10 @@ if __name__ == '__main__':
     #for ng in ngrad:
     #    print ng
 
-    #import line_profiler
-    #prof = line_profiler.LineProfiler(cygradient.collect_alpha_delta_log_summands)
-    #prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
-    #prof.print_stats()
+    import line_profiler
+    prof = line_profiler.LineProfiler(cygradient.loc_gradient)
+    prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
+    prof.print_stats()
 
     #def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     #        rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):

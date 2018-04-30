@@ -30,11 +30,15 @@ extensions = [
         library_dirs = []),
     Extension("cylocll", ["cylocll.pyx"],
         include_dirs = [np.get_include()]),
+
+    #Extension("cygradient", ["cygradient.pyx"],
+    #    include_dirs = [np.get_include()],
+    #    extra_compile_args = ['-march=native']),
     Extension("cygradient", ["cygradient.pyx"],
         include_dirs = [np.get_include()],
-        extra_compile_args = ['-march=native']),
-        #include_dirs = [np.get_include()],
-        #define_macros=[('CYTHON_TRACE',1)]),
+        extra_compile_args = ['-march=native'],
+        define_macros=[('CYTHON_TRACE',1)]),
+
     Extension("cylikelihood", ["cylikelihood.pyx"],
         include_dirs = [np.get_include()],
         extra_compile_args = ['-march=native']),

@@ -1,7 +1,7 @@
-## cython: profile=True
-## cython: linetrace=True
-## cython: binding=True
-## distutils: define_macros=CYTHON_TRACE_NOGIL=1
+# cython: profile=True
+# cython: linetrace=True
+# cython: binding=True
+# distutils: define_macros=CYTHON_TRACE_NOGIL=1
 # cython: boundscheck=False
 # cython: wraparound=False
 
@@ -169,7 +169,6 @@ def loc_gradient_wrapper(args):
 
 def loc_gradient(
         np.ndarray[ndim=1,dtype=np.float64_t] params,
-        #double [:,::1] cm,
         np.ndarray[dtype=np.float64_t,ndim=2] cm,
         dict logprobs,
         tuple locobs,
@@ -335,8 +334,8 @@ def loc_gradient(
             if not found:
                 continue
             for fidx in range(nfs):
-                log_alpha_log_summands = l_log_alpha_log_summands[fidx]
-                log_delta_log_summands = l_log_delta_log_summands[fidx]
+                log_alpha_log_summands = <DoubleVecCounts>l_log_alpha_log_summands[fidx]
+                log_delta_log_summands = <DoubleVecCounts>l_log_delta_log_summands[fidx]
                 log_alpha_log_summands.clear()
                 log_delta_log_summands.clear()
             if base == major:
@@ -382,8 +381,8 @@ def loc_gradient(
 
                 # calculate logabsbf[fidx]
             for fidx in range(nfs):
-                log_alpha_log_summands = l_log_alpha_log_summands[fidx]
-                log_delta_log_summands = l_log_delta_log_summands[fidx]
+                log_alpha_log_summands = <DoubleVecCounts>l_log_alpha_log_summands[fidx]
+                log_delta_log_summands = <DoubleVecCounts>l_log_delta_log_summands[fidx]
                 if (log_delta_log_summands.size == 0 and
                         log_alpha_log_summands.size == 0):
                     continue
