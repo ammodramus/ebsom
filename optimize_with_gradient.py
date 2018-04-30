@@ -16,7 +16,7 @@ v = bws.get_window_boundaries(num_f)
 lf = np.log(f)
 l1mf = np.log(1-f)
 
-cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
+cm, lo, all_majorminor, colnames = dd.io.load('empirical_onecm.h5')
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
 for m, M in cm_minmaxes:
