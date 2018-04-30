@@ -14,8 +14,8 @@ v = bws.get_window_boundaries(num_f)
 lf = np.log(f)
 l1mf = np.log(1-f)
 
-#cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
-cm, lo, all_majorminor = dd.io.load('testdata.h5')
+cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
+#cm, lo, all_majorminor = dd.io.load('testdata.h5')
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
 bam_fns = lo['chrM'].keys()
@@ -42,6 +42,7 @@ pars = np.concatenate((betas, (a,b,z)))
 if __name__ == '__main__':
     bam = bam_fns[0]
     loc = 0
+    loci = [0,1,2]
 
     import schwimmbad
     #pool = schwimmbad.MultiPool(4)
@@ -69,7 +70,7 @@ if __name__ == '__main__':
     prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
     prof.print_stats()
 
-    grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
+    grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loci, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
     print grad
 
     #def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,

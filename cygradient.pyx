@@ -490,7 +490,7 @@ def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
 
 
 @cython.wraparound(True)
-def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
+def loc_gradient_make_buffers(params, ref, bam, positions, cm, lo, mm, blims,
         rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
 
     betas = params[:-num_pf_params]
@@ -510,12 +510,19 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
         Xb -= logsumexp(Xb, axis = 1)[:,None]
         logprobs[reg] = Xb
 
-    locobs = lo[ref][bam][position]
-    major, minor = mm[ref][bam][position]
-    major, minor = bytes(major), bytes(minor)
-
-    loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
-            logpf, lf, l1mf, logpf_grad, num_pf_params)
+    try:
+        all_locobs = [lo[ref][bam][position] for position in positions]
+    except:
+        print position, positions
+        raise
+    all_major_minor = [mm[ref][bam][position] for position in positions]
+    all_major_minor = [(bytes(major), bytes(minor)) for major, minor in all_major_minor]
+    
+    loc_grad = 0.0
+    for locobs, mm in zip(all_locobs, all_major_minor):
+        major, minor = mm
+        loc_grad += loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
+                logpf, lf, l1mf, logpf_grad, num_pf_params)
     return loc_grad
 
 
