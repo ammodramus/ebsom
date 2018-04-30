@@ -11,8 +11,9 @@ from libc.math cimport log, exp, abs, isnan, isfinite
 from libc.stdio cimport printf
 from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
-from doubleveccounts cimport DoubleVecCounts
 import beta_with_spikes_integrated as bws
+cimport doubleveccounts as dvc
+from doubleveccounts cimport doubleveccount_t
 
 import numpy as np
 from scipy.special import logsumexp
@@ -99,14 +100,14 @@ cdef void collect_alpha_delta_log_summands(
         bint is_major,
         double [:] lf,
         double [:] l1mf,
-        list l_log_alpha_log_summands,
-        list l_log_delta_log_summands):
+        doubleveccount_t *l_log_alpha_log_summands,
+        doubleveccount_t *l_log_delta_log_summands):
     cdef:
         int i, j, k, nlo, lp_idx, count, observed_outcome
         double logsummand, c1, c2, logabsXi, obs_tlp, des_tlp, Xi, tlpa, tlpA
         double logsummand_nof, tlf, tl1mf
-        DoubleVecCounts log_alpha_log_summands,
-        DoubleVecCounts log_delta_log_summands
+        doubleveccount_t *log_alpha_log_summands
+        doubleveccount_t *log_delta_log_summands
 
     cdef int nfs = lf.shape[0]
     nlo = lo.shape[0]
@@ -121,8 +122,7 @@ cdef void collect_alpha_delta_log_summands(
                 continue
             if Xi == 0.0:
                 for j in range(nfs):
-                    log_alpha_log_summands = l_log_alpha_log_summands[j]
-                    log_alpha_log_summands.append(-INFINITY, count)
+                    dvc.doubleveccount_append(&(l_log_alpha_log_summands[i]), -INFINITY, count)
                 continue
                 
             tlpA = lpA[lp_idx,observed_outcome]
@@ -150,13 +150,12 @@ cdef void collect_alpha_delta_log_summands(
                 logsummand += logsummand_nof
 
                 # now add to log_alpha and log_delta
-                log_alpha_log_summands = l_log_alpha_log_summands[j]
-                log_delta_log_summands = l_log_delta_log_summands[j]
+                log_alpha_log_summands = &(l_log_alpha_log_summands[j])
+                log_delta_log_summands = &(l_log_delta_log_summands[j])
                 if sign == 1:
-                    log_alpha_log_summands.append(logsummand, count)
+                    dvc.doubleveccount_append(log_alpha_log_summands, logsummand, count)
                 else:
-                    #assert sign == -1
-                    log_delta_log_summands.append(logsummand, count)
+                    dvc.doubleveccount_append(log_delta_log_summands, logsummand, count)
 
 
 def loc_ll_wrapper(args):

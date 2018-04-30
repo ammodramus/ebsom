@@ -11,8 +11,10 @@ from libc.math cimport log, exp, abs, isnan, isfinite
 from libc.stdio cimport printf
 from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
-from doubleveccounts cimport DoubleVecCounts
+cimport doubleveccounts as dvc
+from doubleveccounts cimport doubleveccount_t
 import beta_with_spikes_integrated as bws
+from libc.stdlib cimport malloc, free, calloc, realloc
 
 import numpy as np
 from scipy.special import logsumexp
@@ -90,28 +92,23 @@ cdef double logsumexp_double_counts(double *x, unsigned int *counts, int n, doub
         return v
 
 cdef void collect_alpha_delta_log_summands(
-#cpdef void collect_alpha_delta_log_summands(
-#def collect_alpha_delta_log_summands(
         int X_idx,
         int designated_outcome,
         int [:,::1] lo,
-        #double [:,::1] lpA,
-        #double [:,::1] lpa,
-        #double [:,::1] cm,
         np.ndarray[ndim=2,dtype=np.float64_t] lpA,
         np.ndarray[ndim=2,dtype=np.float64_t] lpa,
         np.ndarray[ndim=2,dtype=np.float64_t] cm,
         bint is_major,
         double [:] lf,
         double [:] l1mf,
-        list l_log_alpha_log_summands,
-        list l_log_delta_log_summands):
+        doubleveccount_t *l_log_alpha_log_summands,
+        doubleveccount_t *l_log_delta_log_summands):
     cdef:
         int i, j, k, nlo, lp_idx, count, observed_outcome
         double logsummand, c1, c2, logabsXi, obs_tlp, des_tlp, Xi, tlpa, tlpA
         double logsummand_nof, tlf, tl1mf
-        DoubleVecCounts log_alpha_log_summands,
-        DoubleVecCounts log_delta_log_summands
+        doubleveccount_t *log_alpha_log_summands,
+        doubleveccount_t *log_delta_log_summands
 
     cdef int nfs = lf.shape[0]
     nlo = lo.shape[0]
@@ -126,9 +123,6 @@ cdef void collect_alpha_delta_log_summands(
                 continue
             if Xi == 0.0:
                 continue  # rather than append -INFINITY to a vector to be logsumexp'd, just skip it
-                #for j in range(nfs):
-                #log_alpha_log_summands = l_log_alpha_log_summands[j]
-                #log_alpha_log_summands.append(-INFINITY, count)
                 
             tlpA = lpA[lp_idx,observed_outcome]
             tlpa = lpa[lp_idx,observed_outcome]
@@ -156,12 +150,11 @@ cdef void collect_alpha_delta_log_summands(
 
                 # now add to log_alpha and log_delta
                 if sign == 1:
-                    log_alpha_log_summands = l_log_alpha_log_summands[j]
-                    log_alpha_log_summands.append(logsummand, count)
+                    log_alpha_log_summands = &(l_log_alpha_log_summands[j])
+                    dvc.doubleveccount_append(log_alpha_log_summands, logsummand, count)
                 else:
-                    log_delta_log_summands = l_log_delta_log_summands[j]
-                    #assert sign == -1
-                    log_delta_log_summands.append(logsummand, count)
+                    log_delta_log_summands = &(l_log_delta_log_summands[j])
+                    dvc.doubleveccount_append(log_delta_log_summands, logsummand, count)
 
 
 def loc_gradient_wrapper(args):
@@ -301,13 +294,13 @@ def loc_gradient(
 
     # a_f is the same for all parameters. now have to calculate b_f for each
     # parameter.
-    cdef list l_log_alpha_log_summands, l_log_delta_log_summands
-    l_log_alpha_log_summands, l_log_delta_log_summands = [], []
+    cdef doubleveccount_t *l_log_alpha_log_summands = <doubleveccount_t *>malloc(sizeof(doubleveccount_t) * nfs)
+    cdef doubleveccount_t *l_log_delta_log_summands = <doubleveccount_t *>malloc(sizeof(doubleveccount_t) * nfs)
     for fidx in range(nfs):
-        l_log_alpha_log_summands.append(DoubleVecCounts(1024,2))
-        l_log_delta_log_summands.append(DoubleVecCounts(1024,2))
-    cdef DoubleVecCounts log_alpha_log_summands
-    cdef DoubleVecCounts log_delta_log_summands
+        dvc.doubleveccount_init(&(l_log_alpha_log_summands[fidx]), 1024, 2)
+        dvc.doubleveccount_init(&(l_log_delta_log_summands[fidx]), 1024, 2)
+    cdef doubleveccount_t *log_alpha_log_summands
+    cdef doubleveccount_t *log_delta_log_summands
     cdef DoubleVec afbf_pos_log_summands = DoubleVec(256, 2)
     cdef DoubleVec afbf_neg_log_summands = DoubleVec(256, 2)
     cdef bint is_major, bf_is_pos, found
@@ -334,10 +327,10 @@ def loc_gradient(
             if not found:
                 continue
             for fidx in range(nfs):
-                log_alpha_log_summands = <DoubleVecCounts>l_log_alpha_log_summands[fidx]
-                log_delta_log_summands = <DoubleVecCounts>l_log_delta_log_summands[fidx]
-                log_alpha_log_summands.clear()
-                log_delta_log_summands.clear()
+                log_alpha_log_summands = &(l_log_alpha_log_summands[fidx])
+                log_delta_log_summands = &(l_log_delta_log_summands[fidx])
+                dvc.doubleveccount_clear(log_alpha_log_summands)
+                dvc.doubleveccount_clear(log_delta_log_summands)
             if base == major:
                 # process as if base is major
                 is_major = True
@@ -381,8 +374,8 @@ def loc_gradient(
 
                 # calculate logabsbf[fidx]
             for fidx in range(nfs):
-                log_alpha_log_summands = <DoubleVecCounts>l_log_alpha_log_summands[fidx]
-                log_delta_log_summands = <DoubleVecCounts>l_log_delta_log_summands[fidx]
+                log_alpha_log_summands = &(l_log_alpha_log_summands[fidx])
+                log_delta_log_summands = &(l_log_delta_log_summands[fidx])
                 if (log_delta_log_summands.size == 0 and
                         log_alpha_log_summands.size == 0):
                     continue

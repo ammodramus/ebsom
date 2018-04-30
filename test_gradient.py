@@ -69,6 +69,9 @@ if __name__ == '__main__':
     prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
     prof.print_stats()
 
+    grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
+    print grad
+
     #def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     #        rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
 
