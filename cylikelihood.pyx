@@ -19,6 +19,7 @@ from scipy.special import logsumexp
 import likelihood as lik
 import afd
 import util as ut
+import sharearray
 
 cdef inline double double_max(double a, double b): return a if a >= b else b
 cdef inline double double_min(double a, double b): return a if a <= b else b
@@ -289,7 +290,6 @@ def get_args_debug(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf, 
                     logpf, lf, l1mf))
                 loc_info.append((ref, bam, position))
     return args, loc_info
-
 
 @cython.wraparound(True)
 def ll(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,

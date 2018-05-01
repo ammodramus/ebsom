@@ -26,6 +26,18 @@ parser.add_argument('--init-params',
         help = 'file with initial parameters')
 args = parser.parse_args()
 
+import schwimmbad
+if args.mpi:
+    pool = schwimmbad.MPIPool()
+    if not pool.is_master():
+        pool.wait()
+        sys.exit(0)
+else:
+    if args.num_processes > 1:
+        pool = schwimmbad.MultiPool(args.num_processes)
+    else:
+        pool = schwimmbad.SerialPool()
+
 dat = dd.io.load(args.input)
 try:
     cm, lo, all_majorminor, colnames = dat
@@ -35,6 +47,14 @@ except:
     have_colnames = False
 
 cm, cm_minmaxes = util.normalize_covariates(cm)
+cm_cached = sharedarray.cache('pwem_cm', cm)
+lo_cached = {}
+for chrom in lo.keys():
+    for bam in lo[chrom].keys():
+        for position in 
+        lo_cached = sharedarray.cache('pwem_lo', lo)
+del cm
+import gc; gc.collect()
 
 for m, M in cm_minmaxes:
     print '# mM {}\t{}'.format(m,M)
@@ -73,17 +93,6 @@ else:
 
 gradfun = lambda p: -1.0*cygradient.gradient(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
 
-import schwimmbad
-if args.mpi:
-    pool = schwimmbad.MPIPool()
-    if not pool.is_master():
-        pool.wait()
-        sys.exit(0)
-else:
-    if args.num_processes > 1:
-        pool = schwimmbad.MultiPool(args.num_processes)
-    else:
-        pool = schwimmbad.SerialPool()
 
 def likefun(p):
     val = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
