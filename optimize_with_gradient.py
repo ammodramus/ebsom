@@ -10,6 +10,7 @@ import beta_with_spikes_integrated as bws
 import util
 import sys
 import argparse
+import datetime
 
 num_f = 100
 f = bws.get_freqs(num_f)
@@ -24,6 +25,8 @@ parser.add_argument('input', help = 'input HDF5 file')
 parser.add_argument('--bad-locus-file')
 parser.add_argument('--init-params',
         help = 'file with initial parameters')
+parser.add_argument('--mpi', action = 'store_true')
+parser.add_argument('--num-processes', type = int, default = 1)
 args = parser.parse_args()
 
 dat = dd.io.load(args.input)
@@ -36,8 +39,6 @@ except:
 
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
-for m, M in cm_minmaxes:
-    print '# mM {}\t{}'.format(m,M)
 
 bam_fns = lo['chrM'].keys()
 
@@ -88,10 +89,13 @@ else:
 def likefun(p):
     val = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
             l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
-    pstr = "\t".join([str(val)] + [str(el) for el in p])
+    ttime = str(datetime.datetime.now()).replace(' ', '_')
+    pstr = "\t".join([str(val)] + [ttime] + [str(el) for el in p])
     print pstr + '\n',
     return val
 
+for m, M in cm_minmaxes:
+    print '# mM {}\t{}'.format(m,M)
 
 res = opt.minimize(fun = likefun, x0 = pars, method = 'L-BFGS-B', jac = gradfun, options = {'maxiter': 5000})
 resstr = '#' + '\t'.join([str(el) for el in res.x])
