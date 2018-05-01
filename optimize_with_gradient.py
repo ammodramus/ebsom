@@ -30,7 +30,7 @@ dat = dd.io.load(args.input)
 try:
     cm, lo, all_majorminor, colnames = dat
     have_colnames = True
-else:
+except:
     cm, lo, all_majorminor = dat
     have_colnames = False
 
