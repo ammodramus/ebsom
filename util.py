@@ -156,7 +156,7 @@ def get_all_consensuses(counts, min_coverage):
     return all_con
 
 def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses,
-        use_mapq):
+        use_mapq, use_bam):
     '''
     bam_fns             list of bam filenames
     refs                list of reference sequence names
@@ -187,7 +187,8 @@ def get_row_makers(bam_fns, refs, context_len, dend_roundby, consensuses,
                 cons,
                 other_cons,
                 bam_fns,
-                use_mq = use_mapq)
+                use_mq = use_mapq,
+                use_bam = use_bam)
             rm[ref][bam_fn] = thisrm
             l = thisrm.rowlen
             if rowlen is None:
