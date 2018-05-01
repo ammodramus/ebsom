@@ -4,7 +4,6 @@ import numpy as np
 import pysam
 from locuscollectors import NonCandidateCollector, CandidateCollector
 import util as ut
-import processreads as pr
 import cyprocessreads as cpr
 import cyregression as cre
 
