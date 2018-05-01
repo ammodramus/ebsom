@@ -41,6 +41,8 @@ parser.add_argument('--load-data-from',
         help = 'load data from previously saved HDF5 file')
 parser.add_argument('--no-mapq', action = 'store_true',
         help = 'do not use map qualities')
+parser.add_argument('--no-bam', action = 'store_true',
+        help = 'do not add dummy variable for bam')
 parser.add_argument('--min-coverage', type = int, default = 20)
 args = parser.parse_args()
 min_bq = args.min_bq
@@ -63,7 +65,7 @@ all_majorminor = ut.get_all_majorminor(all_counts)
 
 # make rowmakers: a dict by ref and bam_fn
 row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len, 
-        args.round_distance_by, all_consensuses, not args.no_mapq)
+        args.round_distance_by, all_consensuses, not args.no_mapq, not args.no_bam)
 
 if args.load_data_from is None:
     covariate_matrices = ut.get_covariate_matrices(rowlen)
