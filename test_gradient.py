@@ -42,7 +42,7 @@ pars = np.concatenate((betas, (a,b,z)))
 if __name__ == '__main__':
     bam = bam_fns[0]
     loc = 0
-    loci = [0,1,2]
+    loci = [0,1,2,3,4,5]
 
     import schwimmbad
     #pool = schwimmbad.MultiPool(4)
@@ -67,11 +67,11 @@ if __name__ == '__main__':
 
     import line_profiler
     prof = line_profiler.LineProfiler(cygradient.loc_gradient)
-    prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loc, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
+    prof.runcall(cygradient.loc_gradient_make_buffers, pars, 'chrM', bam, loci, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
     prof.print_stats()
 
-    grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loci, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
-    print grad
+    #grad = cygradient.loc_gradient_make_buffers(pars, 'chrM', bam, loci, cm, lo, all_majorminor, blims, rowlen, f, lf, l1mf, regkeys, len(f), 3)
+    #print grad
 
     #def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     #        rowlen, freqs, lf, l1mf, regs, num_f, num_pf_params):
