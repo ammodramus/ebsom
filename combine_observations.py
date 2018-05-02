@@ -65,11 +65,22 @@ def combine_locobs(locobs, mm):
     return all_list
 
 if __name__ == '__main__':
-    cm, lo, mm, colnames = dd.io.load('data_reordered.h5')
+
+    import argparse
+
+    parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('input', help = 'input HDF5 file')
+    parser.add_argument('--start-locus', type = int, help = 'index of first locus to consider for debugging (zero-based)')
+    parser.add_argument('--end-locus', type = int, help = 'index of last locus to consider for debugging (zero-based, inclusive)')
+    parser.add_argument('--num-processes', type = int, default = 1)
+    parser.add_argument('--init-params', type = str, help = 'filename of file containing list of initial parameters')
+    args = parser.parse_args()
+
+    cm, lo, mm, colnames = dd.io.load(args.input)
     cm, cm_minmaxes = ut.normalize_covariates(cm)
     for m, M in cm_minmaxes:
         print '# mM {}\t{}'.format(m,M)
-
     
     bam_fns = lo['chrM'].keys()
     badloci = np.loadtxt('badloci.txt').astype(np.int)-1
@@ -77,16 +88,6 @@ if __name__ == '__main__':
         for bl in badloci:
             mm['chrM'][bam][bl] = ('N', 'N')
             lo['chrM'][bam][bl] = [[[],[]], [[],[]]]
-
-    import argparse
-
-    parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--start-locus', type = int, help = 'index of first locus to consider for debugging (zero-based)')
-    parser.add_argument('--end-locus', type = int, help = 'index of last locus to consider for debugging (zero-based, inclusive)')
-    parser.add_argument('--num-processes', type = int, default = 1)
-    parser.add_argument('--init-params', type = str, help = 'filename of file containing list of initial parameters')
-    args = parser.parse_args()
 
     if args.start_locus is not None:
         bam_fns = lo['chrM'].keys()
@@ -107,6 +108,9 @@ if __name__ == '__main__':
         mm = mmtmp
 
     clo = combine_locobs(lo, mm)
+
+    del lo
+    import gc; gc.collect()
 
     regkeys = [(b, r) for b in 'ACGT' for r in (1,2)]
     rowlen = cm.shape[1]
