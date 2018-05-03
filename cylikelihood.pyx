@@ -13,6 +13,7 @@ from libc.math cimport INFINITY, NAN
 from doublevec cimport DoubleVec
 from doubleveccounts cimport DoubleVecCounts
 import beta_with_spikes_integrated as bws
+from itertools import izip
 
 import numpy as np
 from scipy.special import logsumexp
@@ -166,16 +167,19 @@ def loc_ll_wrapper(args):
 def loc_ll(
         np.ndarray[ndim=1,dtype=np.float64_t] params,
         double [:,::1] cm,
-        dict logprobs,
-        tuple locobs,
+        int [:] locobs_idxs,
         bytes major,
         bytes minor,
         dict blims,
         double [:] lpf,
         double [:] lf,
         double [:] l1mf):
+    
+    global logprobs_mat
+    global locobs
 
     if minor == 'N':
+        # TODO fix this too
         return loc_ll_Nminor(params, cm, logprobs, locobs, major,
                 minor, blims, lpf, lf, l1mf)
 
@@ -207,8 +211,15 @@ def loc_ll(
     # logaf := \log P(f) + \sum_i \log (fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) )
     logaf[:] = lpf[:]
 
-    los = [locobs[0][0], locobs[0][1], locobs[1][0], locobs[1][1]]
+    los = [
+            locobs[locobs_idxs[0]:locobs_idxs[1]],
+            locobs[locobs_idxs[1]:locobs_idxs[2]],
+            locobs[locobs_idxs[2]:locobs_idxs[3]],
+            locobs[locobs_idxs[3]:locobs_idxs[4]]
+        ]
     major_keys = [(major,1), (major,2), (rmajor,1), (rmajor,2)]
+    # TODO: translate logprobs and locobs into lpAs, or 
+    # come up with another plan
     lpAs = [logprobs[key] for key in major_keys]
 
     minor_keys = [(minor,1), (minor,2), (rminor,1), (rminor,2)]
@@ -291,35 +302,40 @@ def get_args_debug(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf, 
                 loc_info.append((ref, bam, position))
     return args, loc_info
 
+def generate_logprobs(X, betas, rowlen, regs, blims, logprobs_mat):
+    cur_col = 0
+    for reg in regs:
+        low, high = blims[reg]
+        b = betas[low:high].reshape((rowlen,3), order = 'F')
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+        Xb -= logsumexp(Xb, axis = 1)[:,None]
+        logprobs_mat[:,cur_col:cur_col+4] = Xb[:,:]
+        cur_col += 4
+
 @cython.wraparound(True)
-def ll(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
-        regs, num_f, num_pf_params, pool):
+def ll(params, cm, lo, lo_indices, chroms, bams, positions, majors, minors,
+        blims, rowlen, freqs, windows, lf, l1mf, regs, num_f, num_pf_params,
+        pool, logprobs_mat, mpi):
     betas = params[:-num_pf_params]
     pf_params = params[-num_pf_params:]
     f = freqs
     v = windows
     logpf = bws.get_lpf(pf_params, f, windows)
 
-    logprobs = {}
-    X = cm
-    for reg in regs:
-        low, high = blims[reg]
-        b = betas[low:high].reshape((rowlen,-1), order = 'F')
-        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
-        Xb -= logsumexp(Xb, axis = 1)[:,None]
-        logprobs[reg] = Xb
+    # logprobs_mat will need to have been created before, stored in memory in /dev/shm
+    generate_logprobs(cm, betas, rowlen, regs, blims, logprobs_mat)
+    if mpi:
+        # will need to define a function that distributes the logprobs to the different nodes!
+        # will it be a global matrix? don't want to pass it between processes.
+        distribute_logprobs(cm, betas, rowlen, regs, blims, logprobs_mat, pool)
 
     args = []
-    for ref in lo.keys():
-        for bam in lo[ref].keys():
-            for position in range(len(lo[ref][bam])):
-                locobs = lo[ref][bam][position]
-                major, minor = mm[ref][bam][position]
-                major, minor = str(major), str(minor)
-                if major == 'N':
-                    continue
-                args.append((params, cm, logprobs, locobs, major, minor, blims,
-                    logpf, lf, l1mf))
+    for (ref, bam, position, major, minor, locus_idxs) in izip(chroms, bams,
+            positions, majors, minors, lo_indices):
+        if major == 'N':
+            continue
+        args.append((params, cm, locus_idxs, major, minor, blims,
+            logpf, lf, l1mf))
 
     lls = pool.map(loc_ll_wrapper, args)
     ll = np.sum(lls)
