@@ -1,3 +1,4 @@
+
 import scipy.optimize as opt
 import deepdish as dd
 import numpy as np
@@ -6,24 +7,53 @@ import afd
 import gradient
 import cygradient
 import cylikelihood
-import beta_with_spikes as bws
+import beta_with_spikes_integrated as bws
 import util
 import sys
+import argparse
+import datetime
 
 num_f = 100
 f = bws.get_freqs(num_f)
+v = bws.get_window_boundaries(num_f)
 lf = np.log(f)
 l1mf = np.log(1-f)
 
-cm, lo, all_majorminor = dd.io.load('empirical_onecm.h5')
+parser = argparse.ArgumentParser(
+        description='split error modeling files into training and target',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('input', help = 'input HDF5 file')
+parser.add_argument('--bad-locus-file')
+parser.add_argument('--init-params',
+        help = 'file with initial parameters')
+parser.add_argument('--mpi', action = 'store_true')
+parser.add_argument('--num-processes', type = int, default = 1)
+parser.add_argument('--num-reps', type = int, default = 100)
+parser.add_argument('--batch-size', type = int, default = 20)
+parser.add_argument('--alpha', type = float, default = 0.01)
+args = parser.parse_args()
+
+dat = dd.io.load(args.input)
+try:
+    cm, lo, all_majorminor, colnames = dat
+    have_colnames = True
+except:
+    print len(dat)
+    cm, lo, all_majorminor = dat
+    have_colnames = False
+
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
-for m, M in cm_minmaxes:
-    print '# mM {}\t{}'.format(m,M)
 
 bam_fns = lo['chrM'].keys()
 
-lo = util.sort_lo(lo)
+# badloci.txt is 1-based, these will be 0-based
+if args.bad_locus_file is not None:
+    badloci = np.loadtxt(args.bad_locus_file).astype(np.int)-1
+    for bam in bam_fns:
+        for bl in badloci:
+            all_majorminor['chrM'][bam][bl] = ('N', 'N')
+            lo['chrM'][bam][bl] = [[[],[]], [[],[]]]
 
 regkeys = [(b, r) for b in 'ACGT' for r in (1,2)]
 rowlen = cm.shape[1]
@@ -35,74 +65,75 @@ for i, reg in enumerate(regkeys):
 
 nbetas = len(regkeys)*3*rowlen
 #npr.seed(0); betas = npr.uniform(-0.1,0.1, size=nbetas)
-betas = npr.uniform(-0.1,0.1, size=nbetas)
-num_pf_params = 3
-a, b, z = -1, 0.5, -0.5
-pars = np.concatenate((betas, (a,b,z)))
+#betas = np.loadtxt('global_params_1.txt')
+if args.init_params is not None:
+    pars = np.loadtxt(args.init_params)
+else:
+    import warnings
+    warnings.warn('using global_params_reordered_incomplete.txt for initial parameters')
+    betas = np.loadtxt('global_params_reordered_incomplete.txt')
+    #betas = np.zeros(nbetas)
+    num_pf_params = 3
+    a, b, z = -1, 0.5, 8
+    pars = np.concatenate((betas, (a,b,z)))
 
-import argparse
+
+gradfun = lambda p: -1.0*cygradient.gradient(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf, l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
+
 import schwimmbad
-parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--num-processes', type = int)
-parser.add_argument('--mpi', action = 'store_true')
-args = parser.parse_args()
-if args.num_processes is not None:
-    pool = schwimmbad.MultiPool(args.num_processes)
-elif args.mpi:
+if args.mpi:
     pool = schwimmbad.MPIPool()
     if not pool.is_master():
         pool.wait()
         sys.exit(0)
 else:
-    pool = schwimmbad.SerialPool()
+    if args.num_processes > 1:
+        pool = schwimmbad.MultiPool(args.num_processes)
+    else:
+        pool = schwimmbad.SerialPool()
 
 def likefun(p):
-    v = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, lf,
+    val = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf,
             l1mf, regkeys, num_f=100,num_pf_params=3,pool=pool)
-    pstr = "\t".join([str(v)] + [str(el) for el in p])
+    ttime = str(datetime.datetime.now()).replace(' ', '_')
+    pstr = "\t".join([str(val)] + [ttime] + [str(el) for el in p])
     print pstr + '\n',
-    return v
+    return val
+
+for m, M in cm_minmaxes:
+    print '# mM {}\t{}'.format(m,M)
+
+num_pf_params = 3
 
 arglist = cygradient.get_args(lo, all_majorminor)
-gradfun = cygradient.make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, f, regkeys, pool)
+gradfun = cygradient.make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, f, v, regkeys, pool)
 grad_target = lambda pars, arglist: -1.0*gradfun(pars, arglist)
 
-alpha = 0.01
-niter = 10000
-batch_size = 100
-
-W = pars.copy()
-Wprev = W.copy()
-Wgrad_prev = np.zeros_like(Wprev)
-
 num_args = len(arglist)
-split_at = np.arange(0, num_args, batch_size)[1:]
+split_at = np.arange(0, num_args, args.batch_size)[1:]
+
+alpha = args.alpha
+b1 = 0.9
+b2 = 0.999
+eps = 1e-8
+W = pars.copy()
+m = 0
+v = 0
+t = 0
 
 while True:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
     for batch in batches:
-        Wgrad = grad_target(W, batch)
-        Wgrad = np.sum(Wgrad, axis=0)
-
-        # if Wgrad is nan, take the previous parameters and reupdate them with
-        # a learning rate divided by two.
-
-        if np.any(~np.isfinite(Wgrad)):
-            import pdb; pdb.set_trace()  # will want to debug!
-
-        '''
-        while np.any(np.isnan(Wgrad)):
-            c = 2.0
-            while True:
-                W[:] = Wprev[:] + Wgrad_prev * -alpha/c
-                Wgrad = grad_target(W, batch)
-                if not np.any(np.isnan(Wgrad)):
-                    break
-                c *= 2.0
-        '''
-        Wgrad_prev = Wgrad[:]
-        Wprev[:] = W[:]
-        W += -alpha * Wgrad
+        t += 1
+        Wgrad = np.sum(grad_target(W, batch), axis = 0)
+        m = b1*m + (1-b1)*Wgrad
+        v = b2*v + (1-b2)*(Wgrad*Wgrad)
+        mhat = m/(1-b1**t)
+        vhat = v/(1-b2**t)
+        W += -alpha * mhat / (np.sqrt(vhat) + eps)
         print "\t".join([str(el) for el in W])
+
+    n_completed_reps += 1
+    if n_completed_reps >= args.num_reps:
+        break
