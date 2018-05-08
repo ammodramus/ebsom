@@ -570,8 +570,7 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, windows,
             logprobs[reg] = Xb
         loc_gradient_args = [
                 (params, cm, logprobs, locobs, major, minor, blims, logpf, lf,
-                    l1mf, logpf_grad, num_pf_params) for locobs, major, minor
-                in argslist
+                    l1mf, logpf_grad, num_pf_params) for locobs, major, minor in argslist
                 ]
         grads = np.array(pool.map(loc_gradient_wrapper, loc_gradient_args))
         grad = np.sum(grads, axis = 0)
