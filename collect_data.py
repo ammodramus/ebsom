@@ -37,13 +37,12 @@ parser.add_argument('--round-distance-by',
                'numbers make for more compression in the data, faster '
                'likelihood evaluations.')
 parser.add_argument('--save-data-as', help = 'filename for optional HDF5 data output')
-parser.add_argument('--load-data-from',
-        help = 'load data from previously saved HDF5 file')
 parser.add_argument('--no-mapq', action = 'store_true',
         help = 'do not use map qualities')
 parser.add_argument('--no-bam', action = 'store_true',
         help = 'do not add dummy variable for bam')
 parser.add_argument('--min-coverage', type = int, default = 20)
+parser.add_argument('--do-not-remove-nonvariable', type = int, default = 20)
 args = parser.parse_args()
 min_bq = args.min_bq
 min_mq = args.min_mq
@@ -67,42 +66,65 @@ all_majorminor = ut.get_all_majorminor(all_counts)
 row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len, 
         args.round_distance_by, all_consensuses, not args.no_mapq, not args.no_bam)
 
-if args.load_data_from is None:
-    covariate_matrices = ut.get_covariate_matrices(rowlen)
-    locus_observations = ut.get_locus_observations(all_majorminor)
-                
-    for ref in ref_names:
-        for bam_fn in bam_fns:
-            reflen = len(all_consensuses[ref][bam_fn])
-            bam = bams[bam_fn]
-            counts = all_counts[ref][bam_fn]
-            freqs = all_freqs[ref][bam_fn]
-            rm = row_makers[ref][bam_fn]
-            mm = all_majorminor[ref][bam_fn]
-            locobs = locus_observations[ref][bam_fn]
-            consensus = all_consensuses[ref][bam_fn]
-            cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
-                    rm, bam_fn, consensus, covariate_matrices, locobs, mm)
-
-    cm = ut.collect_covariate_matrices(covariate_matrices)
-    lo = ut.collect_loc_obs(locus_observations)
-    # they're all the same...
-    cm_names = row_makers[ref][bam_fn].get_covariate_names()
+covariate_matrices = ut.get_covariate_matrices(rowlen)
+locus_observations = ut.get_locus_observations(all_majorminor)
             
-    if args.save_data_as is not None:
-        try:
-            import deepdish as dd
-        except ImportError:
-            raise ImportError('saving output requires deepdish')
-        data = (cm, lo, all_majorminor, cm_names)
+for ref in ref_names:
+    for bam_fn in bam_fns:
+        reflen = len(all_consensuses[ref][bam_fn])
+        bam = bams[bam_fn]
+        counts = all_counts[ref][bam_fn]
+        freqs = all_freqs[ref][bam_fn]
+        rm = row_makers[ref][bam_fn]
+        mm = all_majorminor[ref][bam_fn]
+        locobs = locus_observations[ref][bam_fn]
+        consensus = all_consensuses[ref][bam_fn]
+        cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
+                rm, bam_fn, consensus, covariate_matrices, locobs, mm)
 
-        import warnings
-        with warnings.catch_warnings():
-            dd.io.save(args.save_data_as, data)
+cm = ut.collect_covariate_matrices(covariate_matrices)
+lo = ut.collect_loc_obs(locus_observations)
+# they're all the same...
+cm_names = row_makers[ref][bam_fn].get_covariate_names()
 
-else:
+
+if not args.do_not_remove_nonvariable:
+    nonvariables = []
+    consts = []
+    for j in range(cm.shape[1]):
+        uniques = np.unique(cm[:,j])
+        isnonvar = uniques.shape[0] == 1
+        isconst = isnonvar and uniques[0] == 1.0
+        nonvariables.append(isnonvar)
+        if isconst:
+            consts.append(j)
+
+    keeper_columns = []
+    keeper_column_names = []
+    wrote_const = False
+    for j in range(cm.shape[1]):
+        write_col = False
+        if j in consts:
+            if not wrote_const:
+                wrote_const = True
+                write_col = True
+            assert j in nonvariables
+        #if j not in nonvariables:
+        if not nonvariables[j]:
+            write_col = True
+        if write_col:
+            keeper_columns.append(j)
+            keeper_column_names.append(cm_names[j])
+    old_cm = cm
+    cm = old_cm[:,np.array(keeper_columns)]
+        
+if args.save_data_as is not None:
     try:
         import deepdish as dd
     except ImportError:
         raise ImportError('saving output requires deepdish')
-    cm, lo, all_majorminor = dd.io.load(args.load_data_from)
+    data = (cm, lo, all_majorminor, cm_names)
+
+    import warnings
+    with warnings.catch_warnings():
+        dd.io.save(args.save_data_as, data)
