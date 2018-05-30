@@ -13,6 +13,8 @@ import sys
 import argparse
 import datetime
 
+print '#' + ' '.join(sys.argv)
+
 num_f = 100
 f = bws.get_freqs(num_f)
 v = bws.get_window_boundaries(num_f)
@@ -31,6 +33,7 @@ parser.add_argument('--num-processes', type = int, default = 1)
 parser.add_argument('--num-reps', type = int, default = 100)
 parser.add_argument('--batch-size', type = int, default = 20)
 parser.add_argument('--alpha', type = float, default = 0.01)
+parser.add_argument('--restart', help = 'parameters, one per line, at which to restart optimization')
 args = parser.parse_args()
 
 dat = dd.io.load(args.input)
@@ -69,10 +72,7 @@ nbetas = len(regkeys)*3*rowlen
 if args.init_params is not None:
     pars = np.loadtxt(args.init_params)
 else:
-    import warnings
-    warnings.warn('using global_params_reordered_incomplete.txt for initial parameters')
-    betas = np.loadtxt('global_params_reordered_incomplete.txt')
-    #betas = np.zeros(nbetas)
+    betas = npr.uniform(-0.2, 0.2, size = nbetas)
     num_pf_params = 3
     a, b, z = -1, 0.5, 8
     pars = np.concatenate((betas, (a,b,z)))
@@ -111,6 +111,7 @@ grad_target = lambda pars, arglist: -1.0*gradfun(pars, arglist)
 
 num_args = len(arglist)
 split_at = np.arange(0, num_args, args.batch_size)[1:]
+#split_at = args.batch_size
 
 alpha = args.alpha
 b1 = 0.9
@@ -121,10 +122,11 @@ m = 0
 v = 0
 t = 0
 
+n_completed_reps = 0
 while True:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
-    for batch in batches:
+    for j, batch in enumerate(batches):
         t += 1
         Wgrad = np.sum(grad_target(W, batch), axis = 0)
         m = b1*m + (1-b1)*Wgrad
@@ -132,7 +134,8 @@ while True:
         mhat = m/(1-b1**t)
         vhat = v/(1-b2**t)
         W += -alpha * mhat / (np.sqrt(vhat) + eps)
-        print "\t".join([str(el) for el in W])
+        ttime = str(datetime.datetime.now()).replace(' ', '_')
+        print "\t".join([str(n_completed_reps), str(j), ttime] + [str(el) for el in W])
 
     n_completed_reps += 1
     if n_completed_reps >= args.num_reps:
