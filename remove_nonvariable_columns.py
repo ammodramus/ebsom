@@ -1,5 +1,6 @@
 import deepdish as dd
 import numpy as np
+import argparse
 
 def print_(string):
     print '# ' + string
@@ -26,8 +27,9 @@ if not have_colnames:
 nonvariables = []
 consts = []
 for j in range(cm.shape[1]):
-    isnonvar = np.unique(cm[:,j]).shape[0] == 1
-    isconst = np.unique(cm[:,j]) == np.array([1.0])
+    uniques = np.unique(cm[:,j])
+    isnonvar = uniques.shape[0] == 1
+    isconst = isnonvar and uniques[0] == 1.0
     nonvariables.append(isnonvar)
     if isconst:
         consts.append(j)
@@ -42,7 +44,8 @@ for j in range(cm.shape[1]):
             wrote_const = True
             write_col = True
         assert j in nonvariables
-    if j not in nonvariables:
+    #if j not in nonvariables:
+    if not nonvariables[j]:
         write_col = True
     if write_col:
         keeper_columns.append(j)
@@ -55,4 +58,4 @@ new_cm = cm[:,np.array(keeper_columns)]
 data = (new_cm, lo, all_majorminor, keeper_column_names)
 import warnings
 with warnings.catch_warnings():
-    dd.io.save(args.save_data_as, data)
+    dd.io.save(args.output, data)
