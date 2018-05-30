@@ -167,7 +167,9 @@ def loc_ll_wrapper(args):
 def loc_ll(
         np.ndarray[ndim=1,dtype=np.float64_t] params,
         double [:,::1] cm,
-        int [:] locobs_idxs,
+        double [:,:] logprobs,
+        int [:,:] locobs,
+        int [:,:] locobs_idxs,
         bytes major,
         bytes minor,
         dict blims,
@@ -175,9 +177,6 @@ def loc_ll(
         double [:] lf,
         double [:] l1mf):
     
-    global logprobs_mat
-    global locobs
-
     if minor == 'N':
         # TODO fix this too
         return loc_ll_Nminor(params, cm, logprobs, locobs, major,
@@ -218,8 +217,6 @@ def loc_ll(
             locobs[locobs_idxs[3]:locobs_idxs[4]]
         ]
     major_keys = [(major,1), (major,2), (rmajor,1), (rmajor,2)]
-    # TODO: translate logprobs and locobs into lpAs, or 
-    # come up with another plan
     lpAs = [logprobs[key] for key in major_keys]
 
     minor_keys = [(minor,1), (minor,2), (rminor,1), (rminor,2)]
