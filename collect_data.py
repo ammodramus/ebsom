@@ -42,7 +42,7 @@ parser.add_argument('--no-mapq', action = 'store_true',
 parser.add_argument('--no-bam', action = 'store_true',
         help = 'do not add dummy variable for bam')
 parser.add_argument('--min-coverage', type = int, default = 20)
-parser.add_argument('--do-not-remove-nonvariable', type = int, default = 20)
+parser.add_argument('--do-not-remove-nonvariable', action = 'store_true')
 args = parser.parse_args()
 min_bq = args.min_bq
 min_mq = args.min_mq
