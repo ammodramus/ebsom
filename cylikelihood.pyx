@@ -287,7 +287,7 @@ def loc_post_fs(
         np.ndarray[ndim=2,dtype=np.double_t] lpa
         #double [:,::1] lpA
         #double [:,::1] lpa
-        double [:] logaf
+        np.ndarray[ndim=1,dtype=np.double_t] logaf
         int [:,::1] lo
 
     logaf = np.zeros(lpf.shape[0])
