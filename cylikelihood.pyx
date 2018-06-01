@@ -258,6 +258,105 @@ def loc_ll_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
     lsell = logsumexp(lls)
     return lsell - np.log(3.0)
 
+def loc_post_fs(
+        np.ndarray[ndim=1,dtype=np.float64_t] params,
+        double [:,::1] cm,
+        dict logprobs,
+        tuple locobs,
+        bytes major,
+        bytes minor,
+        dict blims,
+        double [:] lpf,
+        double [:] lf,
+        double [:] l1mf):
+
+    if minor == 'N':
+        return loc_pos_fs_Nminor(params, cm, logprobs, locobs, major,
+                minor, blims, lpf, lf, l1mf)
+
+    cdef bytes rmajor, rminor
+    rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
+
+    cdef:
+        int i, j, k, fidx, nobs, rowlen, nregs, nbetasperreg, nbetas, nfs, nlo
+        int lowA, lowa, highA, higha, lp_idx, count, pp_all_len, bidx, pos
+        list los, major_keys, lpAs, lowAs, highAs,
+        list minor_keys, lpas, lowas, highas
+        double tlpA, tlpa, M, m, c2, c3, val, logabsbf, tlf, tl1mf
+        np.ndarray[ndim=2,dtype=np.double_t] lpA
+        np.ndarray[ndim=2,dtype=np.double_t] lpa
+        #double [:,::1] lpA
+        #double [:,::1] lpa
+        double [:] logaf
+        int [:,::1] lo
+
+    logaf = np.zeros(lpf.shape[0])
+
+    rowlen = cm.shape[1]
+    nfs = lf.shape[0]
+    nregs = len(blims.keys())
+    nbetasperreg = 3*rowlen
+    nbetas = nregs*nbetasperreg
+    nfs = lf.shape[0]
+
+    # logaf := \log P(f) + \sum_i \log (fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) )
+    logaf[:] = lpf[:]
+
+    los = [locobs[0][0], locobs[0][1], locobs[1][0], locobs[1][1]]
+    major_keys = [(major,1), (major,2), (rmajor,1), (rmajor,2)]
+    lpAs = [logprobs[key] for key in major_keys]
+
+    minor_keys = [(minor,1), (minor,2), (rminor,1), (rminor,2)]
+    lpas = [logprobs[key] for key in minor_keys]
+
+    # calculate the logaf's
+    for i in range(len(los)):
+        lo = los[i]
+        lpA = lpAs[i]
+        lpa = lpas[i]
+        nlo = lo.shape[0]
+        for j in range(nlo):
+            lp_idx = lo[j,0]
+            #assert lo.shape[1]-1 == 4
+            for k in range(lo.shape[1]-1):
+                count = lo[j,k+1]
+                if count <= 0:   # should never be < 0
+                    continue
+                #assert k < 4
+                tlpA = lpA[lp_idx,k]
+                tlpa = lpa[lp_idx,k]
+                # calculate the summands to add to logaf
+                for fidx in range(nfs):
+                    c2 = lf[fidx] + tlpa
+                    c3 = l1mf[fidx] + tlpA
+                    M = double_max(c2,c3)
+                    m = double_min(c2,c3)
+                    c4 = M + log(1 + exp(m-M))
+                    logaf[fidx] += count*c4
+
+    return logaf
+
+
+def loc_pos_fs_Nminor(params, cm, logprobs, locobs, major,
+        minor, blims, lpf, lf, l1mf):
+
+    if minor != 'N':
+        raise ValueError('calling Nminor gradient when minor is not N')
+    logafs = np.zeros((lpf.shape[0],3))
+    cdef int i = 0
+    for newminor in 'ACGT':
+        if newminor == major:
+            continue
+        logaf = loc_post_fs(params, cm, logprobs, locobs, major, newminor,
+                blims, lpf, lf, l1mf)
+        logaf -= lpf  # loc_post_fs returns the posterior, not the likelihood, gotta substract the prior, lpf
+        logafs[:,i] = logaf
+        i += 1
+    assert i == 3
+    logaf = logsumexp(logafs, axis = 1)
+    logaf -= np.log(3.0)
+    return logaf
+
 def get_args_debug(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf, regs,
         num_f, num_pf_params):
     betas = params[:-num_pf_params]
