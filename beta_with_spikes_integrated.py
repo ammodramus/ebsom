@@ -31,13 +31,30 @@ def get_freqs(num_f):
     return f
 
 def get_lpf(params, x, window_boundaries = None):
+    '''
+    calculate log-probabilities of the minor allele frequency under a
+    beta-with-spike model
+
+    params is a 3-vector, lA, lB, and expitz, where lA and lB are logs of the
+    beta parameters, and logit(expitz) is the probability that a locus is
+    non-polymorphic.
+
+    the window boundaries run from 0 to 0.5; probabilities are integrated
+    within each window running from 0 to 0.5, and also from 0.5 to 1.0 (folded
+    over 0.5), and then summed. the distribution runs from 0 to 0.5 because
+    this is a minor allele frequency distribution.
+    '''
     if window_boundaries is None:
         raise ValueError('must provide window_boundaries')
     v = window_boundaries
+    # lA is log A, lB is log B, and expitz is expit(z)
     lA, lB, expitz = params
-    A = np.exp(lA)
-    B = np.exp(lB)
-    z = logistic(expitz)
+
+    A = np.exp(lA)  # translate lA from (-inf, inf) to (0, inf)
+    B = np.exp(lB)  # translate lB from (-inf, inf) to (0, inf)
+    z = logistic(expitz)  # translate expitz from (-inf, inf) to (0,1)
+
+
     If_l = betainc(A,B, v)
     If_h = betainc(A,B, 1-v)
     pf = (np.diff(If_l) + np.diff(If_h[::-1])[::-1])*(1-z)

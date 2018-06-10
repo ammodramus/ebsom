@@ -1,3 +1,11 @@
+## cython: profile=True
+## cython: linetrace=True
+## cython: binding=True
+## distutils: define_macros=CYTHON_TRACE_NOGIL=1
+
+# cython: wraparound=False
+# cython: boundscheck=False
+
 from __future__ import print_function
 from pysam.libcalignmentfile cimport AlignmentFile
 from pysam.libcalignedsegment cimport AlignedSegment
@@ -6,19 +14,79 @@ cimport cyutil as cut
 cimport numpy as np
 import sys
 
+import numpy as np
+
+from pysam.libchtslib cimport *
+from pysam.libcsamfile cimport *
+
 from cylocobs cimport LocObs
 from cyregcov cimport RegCov
 from cyrowmaker cimport CyCovariateRowMaker
 
-cdef bytes BASES = b'ACGT'
-cdef inline int get_base_idx(bytes obsbase):
-    cdef:
-        int i
-    o = obsbase[0]
-    for i in range(4):
-        if o == BASES[i]:
-            return i
+cdef inline int get_base_idx(char obsbase):
+    if obsbase == 'A':
+        return 0
+    if obsbase == 'C':
+        return 1
+    if obsbase == 'G':
+        return 2
+    if obsbase == 'T':
+        return 3
     return -1
+
+
+'''
+these two functions from libcalignedsegment.pyx. (not in pysam's
+libcalignedsegment.pxd, unfortunately.) check license.
+'''
+
+cdef inline int32_t getQueryStart(bam1_t *src) except -1:
+    cdef uint32_t * cigar_p
+    cdef uint32_t start_offset = 0
+    cdef uint32_t k, op
+
+    cigar_p = pysam_bam_get_cigar(src);
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        if op == BAM_CHARD_CLIP:
+            if start_offset != 0 and start_offset != src.core.l_qseq:
+                raise ValueError('Invalid clipping in CIGAR string')
+        elif op == BAM_CSOFT_CLIP:
+            start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
+        else:
+            break
+
+    return start_offset
+
+
+cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    cdef uint32_t end_offset = src.core.l_qseq
+    cdef uint32_t k, op
+
+    # if there is no sequence, compute length from cigar string
+    if end_offset == 0:
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op == BAM_CMATCH or \
+               op == BAM_CINS or \
+               op == BAM_CEQUAL or \
+               op == BAM_CDIFF or \
+              (op == BAM_CSOFT_CLIP and end_offset == 0):
+                end_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
+    else:
+        # walk backwards in cigar string
+        for k from pysam_get_n_cigar(src) > k >= 1:
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op == BAM_CHARD_CLIP:
+                if end_offset != src.core.l_qseq:
+                    raise ValueError('Invalid clipping in CIGAR string')
+            elif op == BAM_CSOFT_CLIP:
+                end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
+            else:
+                break
+
+    return end_offset
 
 def add_observations(
         AlignedSegment read,
@@ -33,33 +101,42 @@ def add_observations(
         locus_observations,
         major_alleles):
     cdef:
-        bytes seq, context, obsbase, consbase
+        #bytes seq, context, obsbase, consbase
+        #bytes seq, context
+        bytes context
         int readlen, readnum, qpos, q, dend, refpos, cov_idx, base_idx
-        unsigned char[:] qualities
         bint reverse
         RegCov cov
         LocObs loc
         
-
-    seq = read.seq
+   
+    #cdef unsigned char[:] qualities = read.query_qualities
+    cdef uint8_t *qualities = pysam_bam_get_qual(read._delegate)
+    
+    cdef char *seq = read.seq
+    cdef char obsbase, consbase
     readlen = read.alen  # aligned length
-    qualities = read.query_qualities
     reverse = read.is_reverse
     readnum = read.is_read2 + 1
-    for qpos, refpos in read.get_aligned_pairs(True):
-        if qpos is None or refpos is None:
-            continue
+
+    cdef np.ndarray[np.uint32_t,ndim=2] al_pairs_np = np.array(read.get_aligned_pairs(matches_only = True), dtype = np.uint32)
+    cdef uint32_t [:,:] al_pairs = al_pairs_np
+
+    cdef uint32_t i, j
+    for i in range(al_pairs_np.shape[0]):
+        qpos = al_pairs[i,0]
+        refpos = al_pairs[i,1]
         q = qualities[qpos]
         if q < min_bq:
             continue
         if reverse:
             if qpos >= readlen-context_len:
                 continue
-            context = cut.rev_comp(seq[qpos+1:qpos+3])
+            context = cut.comp(seq[qpos+1:qpos+1+context_len])
             if 'N' in context:
                 continue
-            obsbase = cut.rev_comp(seq[qpos])
-            consbase = cut.rev_comp(consensus[refpos])
+            obsbase = cut.comp(seq[qpos])
+            consbase = cut.comp(consensus[refpos])
             dend = readlen - qpos
         else:
             if qpos < context_len:
@@ -79,15 +156,10 @@ def add_observations(
         if major == 'N':
             continue
         if reverse:
-            major = cut.rev_comp(major)
+            major = cut.comp(major)
         cov_idx = covariate_matrix.set_default(row)
         base_idx = get_base_idx(obsbase)
-        if base_idx < 0 or base_idx > 3:
-            print(obsbase)
-            raise ValueError('invalid base')
-        revidx = int(reverse)
-        ridx = readnum-1
-        loc = locus_observations[refpos][revidx][ridx]
+        loc = locus_observations[refpos][reverse][readnum-1]
         loc.add_obs(cov_idx, base_idx)
 
 def add_bam_observations(

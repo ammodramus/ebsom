@@ -1,10 +1,10 @@
 from libc.stdlib cimport malloc, free
 
-cdef bytes REVCOMPBASES=b'ACGTN'
-cdef bytes REVCOMPRCBASES=b'TGCAN'
-cdef char* cREVCOMPBASES = REVCOMPBASES
-cdef char* cREVCOMPRCBASES = REVCOMPRCBASES
-cpdef bytes rev_comp(bytes seq):
+cdef bytes COMPBASES=b'ACGTN'
+cdef bytes COMPRCBASES=b'TGCAN'
+cdef char* cCOMPBASES = COMPBASES
+cdef char* cCOMPRCBASES = COMPRCBASES
+cpdef bytes comp(bytes seq):
     cdef:
         char* cseq
         char* crc
@@ -20,8 +20,8 @@ cpdef bytes rev_comp(bytes seq):
     for i in range(seq_len):
         found = False
         for j in range(5):
-            if cseq[i] == cREVCOMPBASES[j]:
-                crc[i] = cREVCOMPRCBASES[j]
+            if cseq[i] == cCOMPBASES[j]:
+                crc[i] = cCOMPRCBASES[j]
                 found = True
                 break
         if not found:

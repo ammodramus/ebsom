@@ -1,3 +1,8 @@
+## cython: profile=True
+## cython: linetrace=True
+## cython: binding=True
+## distutils: define_macros=CYTHON_TRACE_NOGIL=1
+
 cimport numpy as np
 import numpy as np
 
@@ -25,10 +30,9 @@ cdef class RegCov(object):
         cdef double *thisrow
         cdef double *x
         x = &x_np[0]
-        key = tuple(x_np)
-        try:
-            ret = self.H[key]
-        except KeyError:
+        cdef bytes key = x_np.tobytes()
+        ret = self.H.get(key, -1)
+        if ret == -1:
             ret = self.curnrows
             self.H[key] = ret
             self.curnrows += 1
@@ -53,5 +57,3 @@ cdef class RegCov(object):
 
     def __dealloc__(self):
         free(self.X)
-
-

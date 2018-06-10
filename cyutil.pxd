@@ -1,1 +1,1 @@
-cpdef bytes rev_comp(bytes seq)
+cpdef bytes comp(bytes seq)
