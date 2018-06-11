@@ -6,6 +6,7 @@ from locuscollectors import NonCandidateCollector, CandidateCollector
 import util as ut
 import cyprocessreads as cpr
 import cyregression as cre
+import deepdish as dd
 
 desc = 'jointly infer sequencing error profiles and polymorphisms'
 parser = argparse.ArgumentParser(
@@ -15,6 +16,7 @@ parser.add_argument('bams', help = 'file containing list of bam files')
 parser.add_argument('references',
         help = 'name of file containing list of reference sequence names, or '
                'comma-separated list of reference sequence names')
+parser.add_argument('output', help = 'filename for optional HDF5 data output')
 parser.add_argument('--min-bq', help = 'minimum base quality',
         type = ut.positive_int, default = 20)
 parser.add_argument('--min-mq', help = 'minimum mapping quality',
@@ -36,7 +38,6 @@ parser.add_argument('--round-distance-by',
         help = 'round distance from start of read by this amount. larger '
                'numbers make for more compression in the data, faster '
                'likelihood evaluations.')
-parser.add_argument('--save-data-as', help = 'filename for optional HDF5 data output')
 parser.add_argument('--no-mapq', action = 'store_true',
         help = 'do not use map qualities')
 parser.add_argument('--no-bam', action = 'store_true',
@@ -82,11 +83,15 @@ for ref in ref_names:
         cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
                 rm, bam_fn, consensus, covariate_matrices, locobs, mm)
 
+# probably best to translate the various lo's to two numpy arrays, one with the
+# data, another with the meta data. the names of the bams and refs can be HDF5 attributes
+
+
+
 cm = ut.collect_covariate_matrices(covariate_matrices)
 lo = ut.collect_loc_obs(locus_observations)
 # they're all the same...
 cm_names = row_makers[ref][bam_fn].get_covariate_names()
-
 
 if not args.do_not_remove_nonvariable:
     nonvariables = []
@@ -117,14 +122,9 @@ if not args.do_not_remove_nonvariable:
             keeper_column_names.append(cm_names[j])
     old_cm = cm
     cm = old_cm[:,np.array(keeper_columns)]
-        
-if args.save_data_as is not None:
-    try:
-        import deepdish as dd
-    except ImportError:
-        raise ImportError('saving output requires deepdish')
-    data = (cm, lo, all_majorminor, cm_names)
 
-    import warnings
-    with warnings.catch_warnings():
-        dd.io.save(args.save_data_as, data)
+data = (cm, lo, all_majorminor, cm_names)
+
+import warnings
+with warnings.catch_warnings():
+    dd.io.save(args.output, data)
