@@ -14,6 +14,8 @@ from doublevec cimport DoubleVec
 from doubleveccounts cimport DoubleVecCounts
 import beta_with_spikes_integrated as bws
 
+from libc.stdint cimport uint32_t
+
 import numpy as np
 from scipy.special import logsumexp
 import likelihood as lik
@@ -183,7 +185,8 @@ def loc_ll(
 
     cdef:
         int i, j, k, fidx, nobs, rowlen, nregs, nbetasperreg, nbetas, nfs, nlo
-        int lowA, lowa, highA, higha, lp_idx, count, pp_all_len, bidx, pos
+        int lowA, lowa, highA, higha, lp_idx, pp_all_len, bidx, pos
+        uint32_t count
         list los, major_keys, lpAs, lowAs, highAs,
         list minor_keys, lpas, lowas, highas
         double tlpA, tlpa, M, m, c2, c3, val, logabsbf, tlf, tl1mf
@@ -192,7 +195,7 @@ def loc_ll(
         #double [:,::1] lpA
         #double [:,::1] lpa
         double [:] logaf
-        int [:,::1] lo
+        uint32_t [:,::1] lo
 
     logaf = np.zeros(lpf.shape[0])
 

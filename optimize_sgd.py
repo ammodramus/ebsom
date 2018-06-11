@@ -1,6 +1,6 @@
 
 import scipy.optimize as opt
-import deepdish as dd
+import h5py
 import numpy as np
 import numpy.random as npr
 import afd
@@ -12,6 +12,8 @@ import util
 import sys
 import argparse
 import datetime
+
+import h5py_util
 
 print '#' + ' '.join(sys.argv)
 
@@ -36,17 +38,14 @@ parser.add_argument('--alpha', type = float, default = 0.01)
 parser.add_argument('--restart', help = 'parameters, one per line, at which to restart optimization')
 args = parser.parse_args()
 
-dat = dd.io.load(args.input)
-try:
-    cm, lo, all_majorminor, colnames = dat
-    have_colnames = True
-except:
-    print len(dat)
-    cm, lo, all_majorminor = dat
-    have_colnames = False
+dat = h5py.File(args.input, 'r')
+cm = dat['covariate_matrix'][:,:]
+all_majorminor = h5py_util.get_major_minor(dat)
+colnames_str = dat.attrs['covariate_column_names']
+colnames = colnames_str.split(',')
+lo = h5py_util.get_locobs(dat, all_majorminor)
 
 cm, cm_minmaxes = util.normalize_covariates(cm)
-
 
 bam_fns = lo['chrM'].keys()
 
@@ -91,6 +90,7 @@ else:
         pool = schwimmbad.MultiPool(args.num_processes)
     else:
         pool = schwimmbad.SerialPool()
+
 
 def likefun(p):
     val = -1.0*cylikelihood.ll(p, cm, lo, all_majorminor, blims, rowlen, f, v, lf,

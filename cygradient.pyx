@@ -14,11 +14,14 @@ from doublevec cimport DoubleVec
 from doubleveccounts cimport DoubleVecCounts
 import beta_with_spikes_integrated as bws
 
+from libc.stdint cimport uint32_t
+
 import numpy as np
 from scipy.special import logsumexp
 import likelihood as lik
 import afd
 import util as ut
+import cyutil as cut
 
 cdef inline double double_max(double a, double b): return a if a >= b else b
 cdef inline double double_min(double a, double b): return a if a <= b else b
@@ -94,10 +97,7 @@ cdef void collect_alpha_delta_log_summands(
 #def collect_alpha_delta_log_summands(
         int X_idx,
         int designated_outcome,
-        int [:,::1] lo,
-        #double [:,::1] lpA,
-        #double [:,::1] lpa,
-        #double [:,::1] cm,
+        uint32_t [:,::1] lo,
         np.ndarray[ndim=2,dtype=np.float64_t] lpA,
         np.ndarray[ndim=2,dtype=np.float64_t] lpa,
         np.ndarray[ndim=2,dtype=np.float64_t] cm,
@@ -205,14 +205,15 @@ def loc_gradient(
                 minor, blims, lpf, lf, l1mf, Dlogpf, num_pf_params)
 
     cdef bytes rmajor, rminor
-    rmajor, rminor = ut.rev_comp(major), ut.rev_comp(minor)
+    rmajor, rminor = cut.comp(major), cut.comp(minor)
 
     cdef np.ndarray[dtype=np.float64_t,ndim=1] grad_np = np.zeros(params.shape[0])
     cdef double [:] grad = grad_np
 
     cdef:
         int i, j, k, fidx, nobs, rowlen, nregs, nbetasperreg, nbetas, nfs, nlo
-        int lowA, lowa, highA, higha, lp_idx, count, pp_all_len, bidx, pos
+        int lowA, lowa, highA, higha, count, pp_all_len, bidx, pos
+        uint32_t lp_idx
         list los, major_keys, lpAs, lowAs, highAs,
         list minor_keys, lpas, lowas, highas
         double tlpA, tlpa, M, m, c2, c3, val, logabsbf, tlf, tl1mf
@@ -221,7 +222,7 @@ def loc_gradient(
         #double [:,::1] lpA
         #double [:,::1] lpa
         double [:] logaf
-        int [:,::1] lo
+        uint32_t [:,::1] lo
 
     logaf = np.zeros(lpf.shape[0])
 
@@ -454,7 +455,7 @@ def loc_gradient_Nminor(params, cm, logprobs, locobs, major, minor, blims, lpf,
     for newminor in 'ACGT':
         if newminor == major:
             continue
-        ll, grad = loc_gradient(params, cm, logprobs, locobs, major, newminor,
+        ll, grad = loc_gradient(params, cm, logprobs, locobs, str(major), str(newminor),
             blims, lpf, lf, l1mf, logpf_grad, num_pf_params, return_both = True)
         lls.append(ll)
         llps.append(grad)
@@ -522,7 +523,7 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     major, minor = mm[ref][bam][position]
     major, minor = bytes(major), bytes(minor)
 
-    loc_grad = loc_gradient(params, cm, logprobs, locobs, major, minor, blims,
+    loc_grad = loc_gradient(params, cm, logprobs, locobs, str(major), str(minor), blims,
             logpf, lf, l1mf, logpf_grad, num_pf_params)
     return loc_grad
 
@@ -569,7 +570,7 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, windows,
             Xb -= logsumexp(Xb, axis = 1)[:,None]
             logprobs[reg] = Xb
         loc_gradient_args = [
-                (params, cm, logprobs, locobs, major, minor, blims, logpf, lf,
+                (params, cm, logprobs, locobs, str(major), str(minor), blims, logpf, lf,
                     l1mf, logpf_grad, num_pf_params) for locobs, major, minor in argslist
                 ]
         grads = np.array(pool.map(loc_gradient_wrapper, loc_gradient_args))
