@@ -23,6 +23,8 @@ from cylocobs cimport LocObs
 from cyregcov cimport RegCov
 from cyrowmaker cimport CyCovariateRowMaker
 
+from collections import defaultdict
+
 cdef inline int get_base_idx(char obsbase):
     if obsbase == 'A':
         return 0
@@ -33,6 +35,7 @@ cdef inline int get_base_idx(char obsbase):
     if obsbase == 'T':
         return 3
     return -1
+
 
 
 '''
@@ -98,7 +101,7 @@ def add_observations(
         bytes ref,
         bytes consensus,
         covariate_matrix,
-        locus_observations,
+        batch_locobs,
         major_alleles):
     cdef:
         #bytes seq, context, obsbase, consbase
@@ -113,8 +116,11 @@ def add_observations(
     #cdef unsigned char[:] qualities = read.query_qualities
     cdef uint8_t *qualities = pysam_bam_get_qual(read._delegate)
     
-    cdef char *seq = read.seq
+    cdef bytes bseq = read.seq
+    cdef char *cseq = bseq
     cdef char obsbase, consbase
+
+    cdef char *cconsensus = consensus
     readlen = read.alen  # aligned length
     reverse = read.is_reverse
     readnum = read.is_read2 + 1
@@ -132,20 +138,20 @@ def add_observations(
         if reverse:
             if qpos >= readlen-context_len:
                 continue
-            context = cut.comp(seq[qpos+1:qpos+1+context_len])
+            context = cut.comp(bseq[qpos+1:qpos+1+context_len])
             if 'N' in context:
                 continue
-            obsbase = cut.comp(seq[qpos])
-            consbase = cut.comp(consensus[refpos])
+            obsbase = cut.comp1(cseq[qpos])
+            consbase = cut.comp1(cconsensus[refpos])
             dend = readlen - qpos
         else:
             if qpos < context_len:
                 continue
-            context = seq[qpos-context_len:qpos]
+            context = bseq[qpos-context_len:qpos]
             if 'N' in context:
                 continue
-            obsbase = seq[qpos]
-            consbase = consensus[refpos]
+            obsbase = cseq[qpos]
+            consbase = cconsensus[refpos]
             dend = qpos
         if obsbase == 'N' or consbase == 'N':
             continue
@@ -159,7 +165,7 @@ def add_observations(
             major = cut.comp(major)
         cov_idx = covariate_matrix.set_default(row)
         base_idx = get_base_idx(obsbase)
-        loc = locus_observations[refpos][reverse][readnum-1]
+        loc = batch_locobs[refpos][reverse][readnum-1]
         loc.add_obs(cov_idx, base_idx)
 
 def add_bam_observations(
@@ -173,26 +179,65 @@ def add_bam_observations(
         bytes bam_fn,
         bytes consensus,
         covariate_matrix,
-        locus_observations,
+        h5lo_bam,
         major_alleles,
         int update_interval = 1000,
+        read_batch_size = 500,
         max_num_reads = -1):
 
     cdef:
         AlignedSegment read
         int mapq, i
 
+    
+    # locobs are built read by read, not position by position.
+    # add reads to h5lo in 500-bp windows, using fetch.
+    # keep a dict of already-processed reads, skip if already seen.
+
+
     i = 0
-    for read in bam.fetch(contig = ref, start = 0, end = reflen):
-        mapq = read.mapping_quality
-        if mapq < min_mq:
-            continue
-        add_observations(read, mapq, min_bq, context_len, rm,
-                bam_fn, ref, consensus, covariate_matrix,
-                locus_observations, major_alleles)
-        if i % update_interval == 0:
-            print('{}, {}: processed {} of {} reads'.format(
-                bam_fn, ref, i, bam.mapped), file = sys.stderr)
-        i += 1
+    
+    reads_seen = set([])
+    for start_bp in range(0, reflen, read_batch_size):
+        end_bp = start_bp + read_batch_size
+        batch_locobs = defaultdict(lambda: ((LocObs(), LocObs()), (LocObs(), LocObs())))
+
+        for read in bam.fetch(contig = ref, start = start_bp, end = end_bp):
+            if i % update_interval == 0:
+                print('{}, {}: processed {} of {} reads'.format(
+                    bam_fn, ref, i, bam.mapped), file = sys.stderr)
+            i += 1
+            if i == max_num_reads:
+                break
+            mapq = read.mapping_quality
+            if mapq < min_mq:
+                continue
+            qn = read.query_name 
+            if qn in reads_seen:
+                continue
+            reads_seen.add(qn)  # not adding reads failing mapq filter, presumably faster
+                                # to get mapq than hash name
+
+            add_observations(read, mapq, min_bq, context_len, rm,
+                    bam_fn, ref, consensus, covariate_matrix,
+                    batch_locobs, major_alleles)
+        
+        add_batch_locobs(batch_locobs, h5lo_bam)
+
         if i == max_num_reads:
             break
+
+
+def add_batch_locobs(batch_locobs, h5lo_bam):
+    for loc_idx, loc_obs in batch_locobs.iteritems():
+        h5lo_loc = h5lo_bam.create_group(str(loc_idx))
+        if str(loc_idx) in h5lo_loc:
+            raise ValueError('already in hdf5 file!')
+        f1dat = loc_obs[0][0].counts().astype(np.uint32)
+        h5lo_loc.create_dataset('f1', dtype = np.uint32, data = f1dat)
+        f2dat = loc_obs[0][1].counts().astype(np.uint32)
+        h5lo_loc.create_dataset('f2', dtype = np.uint32, data = f2dat)
+        r1dat = loc_obs[1][0].counts().astype(np.uint32)
+        h5lo_loc.create_dataset('r1', dtype = np.uint32, data = r1dat)
+        r2dat = loc_obs[1][1].counts().astype(np.uint32)
+        h5lo_loc.create_dataset('r2', dtype = np.uint32, data = r2dat)

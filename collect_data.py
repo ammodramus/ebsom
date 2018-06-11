@@ -6,7 +6,8 @@ from locuscollectors import NonCandidateCollector, CandidateCollector
 import util as ut
 import cyprocessreads as cpr
 import cyregression as cre
-import deepdish as dd
+import h5py
+import h5py_util
 
 desc = 'jointly infer sequencing error profiles and polymorphisms'
 parser = argparse.ArgumentParser(
@@ -69,24 +70,29 @@ row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len,
 
 covariate_matrices = ut.get_covariate_matrices(rowlen)
 locus_observations = ut.get_locus_observations(all_majorminor)
-            
+
+output = h5py.File(args.output, 'w')
+h5lo = output.create_group('locus_observations')
+h5mm = output.create_group('major_minor')
+
+h5py_util.add_major_minor(all_majorminor, h5mm)
+
 for ref in ref_names:
+    h5lo_ref = h5lo.create_group(ref)
     for bam_fn in bam_fns:
+        h5lo_bam = h5lo_ref.create_group(bam_fn)
         reflen = len(all_consensuses[ref][bam_fn])
         bam = bams[bam_fn]
         counts = all_counts[ref][bam_fn]
         freqs = all_freqs[ref][bam_fn]
         rm = row_makers[ref][bam_fn]
         mm = all_majorminor[ref][bam_fn]
-        locobs = locus_observations[ref][bam_fn]
         consensus = all_consensuses[ref][bam_fn]
         cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
-                rm, bam_fn, consensus, covariate_matrices, locobs, mm)
+                rm, bam_fn, consensus, covariate_matrices, h5lo_bam, mm)
 
 # probably best to translate the various lo's to two numpy arrays, one with the
 # data, another with the meta data. the names of the bams and refs can be HDF5 attributes
-
-
 
 cm = ut.collect_covariate_matrices(covariate_matrices)
 lo = ut.collect_loc_obs(locus_observations)
@@ -123,8 +129,6 @@ if not args.do_not_remove_nonvariable:
     old_cm = cm
     cm = old_cm[:,np.array(keeper_columns)]
 
-data = (cm, lo, all_majorminor, cm_names)
 
-import warnings
-with warnings.catch_warnings():
-    dd.io.save(args.output, data)
+output.attrs['covariate_column_names'] = ','.join(list(cm_names))
+output.create_dataset('covariate_matrix', dtype = np.float64, data = cm)

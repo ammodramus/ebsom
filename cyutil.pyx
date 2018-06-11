@@ -4,6 +4,18 @@ cdef bytes COMPBASES=b'ACGTN'
 cdef bytes COMPRCBASES=b'TGCAN'
 cdef char* cCOMPBASES = COMPBASES
 cdef char* cCOMPRCBASES = COMPRCBASES
+
+cdef inline char comp1(char base):
+    if base == 'A':
+        return 'T'
+    if base == 'C':
+        return 'G'
+    if base == 'G':
+        return 'C'
+    if base == 'T':
+        return 'A'
+    return 'N'
+
 cpdef bytes comp(bytes seq):
     cdef:
         char* cseq
