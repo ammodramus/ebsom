@@ -102,7 +102,9 @@ def add_observations(
         bytes consensus,
         covariate_matrix,
         batch_locobs,
-        major_alleles):
+        major_alleles,
+        int min_refpos,
+        int max_refpos):
     cdef:
         #bytes seq, context, obsbase, consbase
         #bytes seq, context
@@ -132,13 +134,17 @@ def add_observations(
     for i in range(al_pairs_np.shape[0]):
         qpos = al_pairs[i,0]
         refpos = al_pairs[i,1]
+        if refpos < min_refpos or refpos > max_refpos:
+            continue
         q = qualities[qpos]
         if q < min_bq:
             continue
         if reverse:
             if qpos >= readlen-context_len:
                 continue
-            context = cut.comp(bseq[qpos+1:qpos+1+context_len])
+            #context = cut.comp(bseq[qpos+1:qpos+1+context_len])
+            context = cut.comp(bseq[qpos+context_len:qpos:-1])
+            #print('rev context:', context, 'previously', cut.comp(bseq[qpos+1:qpos+1+context_len]))
             if 'N' in context:
                 continue
             obsbase = cut.comp1(cseq[qpos])
@@ -197,7 +203,7 @@ def add_bam_observations(
 
     i = 0
     
-    reads_seen = set([])
+    #reads_seen = set([])
     for start_bp in range(0, reflen, read_batch_size):
         end_bp = start_bp + read_batch_size
         batch_locobs = defaultdict(lambda: ((LocObs(), LocObs()), (LocObs(), LocObs())))
@@ -212,15 +218,15 @@ def add_bam_observations(
             mapq = read.mapping_quality
             if mapq < min_mq:
                 continue
-            qn = read.query_name 
-            if qn in reads_seen:
-                continue
-            reads_seen.add(qn)  # not adding reads failing mapq filter, presumably faster
-                                # to get mapq than hash name
+            #qn = read.query_name 
+            #if qn in reads_seen:
+            #    continue
+            #reads_seen.add(qn)  # not adding reads failing mapq filter, presumably faster
+            #                    # to get mapq than hash name
 
             add_observations(read, mapq, min_bq, context_len, rm,
                     bam_fn, ref, consensus, covariate_matrix,
-                    batch_locobs, major_alleles)
+                    batch_locobs, major_alleles, start_bp, end_bp-1)
         
         add_batch_locobs(batch_locobs, h5lo_bam)
 
@@ -230,6 +236,8 @@ def add_bam_observations(
 
 def add_batch_locobs(batch_locobs, h5lo_bam):
     for loc_idx, loc_obs in batch_locobs.iteritems():
+        if str(loc_idx) in h5lo_bam.keys():
+            print('already there:', str(loc_idx))
         h5lo_loc = h5lo_bam.create_group(str(loc_idx))
         if str(loc_idx) in h5lo_loc:
             raise ValueError('already in hdf5 file!')
