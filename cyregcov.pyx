@@ -3,6 +3,8 @@
 ## cython: binding=True
 ## distutils: define_macros=CYTHON_TRACE_NOGIL=1
 
+from libc.stdlib cimport malloc, free
+from libc.string cimport memcpy
 cimport numpy as np
 import numpy as np
 
@@ -11,7 +13,44 @@ from libc.stdlib cimport malloc, free, realloc
 
 np.import_array()
 
-cdef class RegCov(object):
+'''
+tried to use super-fast hash function to speed up hashing unique rows,
+but not as fast as using x_np.to_bytes(). may be because of Python overhead in
+ArrKey.__eq__
+'''
+cdef extern from "xxHash/xxhash.c":
+    unsigned long long XXH64(const void* buf, size_t length, unsigned long long seed)
+
+cdef unsigned long long get_hash(const void *buf, size_t length):
+    cdef unsigned long long seed = 0;
+    cdef unsigned long long hashnum = XXH64(buf, length, seed)
+    return hashnum
+
+cdef class ArrKey:
+    cdef double *data
+    cdef public unsigned int length
+    cdef public object arr
+    def __init__(self, np.ndarray[ndim=1,dtype=np.float64_t] data):
+        self.data = <double *>&(data.data[0])
+        self.length = data.shape[0]
+        self.arr = data
+
+    def __hash__(self):
+        ret = get_hash(<void *>self.data, <size_t>(self.length*sizeof(double)))
+        return ret
+
+    def __eq__(self, other):
+        cdef int i
+        cdef np.ndarray[ndim=1,dtype=np.float64_t] otherarr = other.arr
+        cdef double *otherdat = &otherarr[0]
+        for i in range(self.length):
+            if self.data[i] != otherdat[i]:
+                return False
+        return True
+
+
+
+cdef class RegCov:
     def __init__(self, int ncol, int init_size = 10000, double growby = 1.5):
         self.X = <double *>malloc(sizeof(double) * ncol * init_size + ncol)
         if not self.X:
@@ -30,6 +69,7 @@ cdef class RegCov(object):
         cdef double *thisrow
         cdef double *x
         x = &x_np[0]
+        #cdef ArrKey key = ArrKey(x_np)
         cdef bytes key = x_np.tobytes()
         ret = self.H.get(key, -1)
         if ret == -1:
