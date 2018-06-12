@@ -89,7 +89,7 @@ for ref in ref_names:
         mm = all_majorminor[ref][bam_fn]
         consensus = all_consensuses[ref][bam_fn]
         cpr.add_bam_observations(bam, ref, reflen, min_bq, min_mq, context_len,
-                rm, bam_fn, consensus, covariate_matrices, h5lo_bam, mm)
+                rm, bam_fn, consensus, covariate_matrices, h5lo_bam, output, mm)
 
 # probably best to translate the various lo's to two numpy arrays, one with the
 # data, another with the meta data. the names of the bams and refs can be HDF5 attributes

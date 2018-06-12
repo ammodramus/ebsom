@@ -25,6 +25,8 @@ from cyrowmaker cimport CyCovariateRowMaker
 
 from collections import defaultdict
 
+import gc
+
 cdef inline int get_base_idx(char obsbase):
     if obsbase == 'A':
         return 0
@@ -43,53 +45,6 @@ these two functions from libcalignedsegment.pyx. (not in pysam's
 libcalignedsegment.pxd, unfortunately.) check license.
 '''
 
-cdef inline int32_t getQueryStart(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p
-    cdef uint32_t start_offset = 0
-    cdef uint32_t k, op
-
-    cigar_p = pysam_bam_get_cigar(src);
-    for k from 0 <= k < pysam_get_n_cigar(src):
-        op = cigar_p[k] & BAM_CIGAR_MASK
-        if op == BAM_CHARD_CLIP:
-            if start_offset != 0 and start_offset != src.core.l_qseq:
-                raise ValueError('Invalid clipping in CIGAR string')
-        elif op == BAM_CSOFT_CLIP:
-            start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
-        else:
-            break
-
-    return start_offset
-
-
-cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
-    cdef uint32_t end_offset = src.core.l_qseq
-    cdef uint32_t k, op
-
-    # if there is no sequence, compute length from cigar string
-    if end_offset == 0:
-        for k from 0 <= k < pysam_get_n_cigar(src):
-            op = cigar_p[k] & BAM_CIGAR_MASK
-            if op == BAM_CMATCH or \
-               op == BAM_CINS or \
-               op == BAM_CEQUAL or \
-               op == BAM_CDIFF or \
-              (op == BAM_CSOFT_CLIP and end_offset == 0):
-                end_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
-    else:
-        # walk backwards in cigar string
-        for k from pysam_get_n_cigar(src) > k >= 1:
-            op = cigar_p[k] & BAM_CIGAR_MASK
-            if op == BAM_CHARD_CLIP:
-                if end_offset != src.core.l_qseq:
-                    raise ValueError('Invalid clipping in CIGAR string')
-            elif op == BAM_CSOFT_CLIP:
-                end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
-            else:
-                break
-
-    return end_offset
 
 def add_observations(
         AlignedSegment read,
@@ -106,8 +61,6 @@ def add_observations(
         int min_refpos,
         int max_refpos):
     cdef:
-        #bytes seq, context, obsbase, consbase
-        #bytes seq, context
         bytes context
         int readlen, readnum, qpos, q, dend, refpos, cov_idx, base_idx
         bint reverse
@@ -186,6 +139,7 @@ def add_bam_observations(
         bytes consensus,
         covariate_matrix,
         h5lo_bam,
+        h5file,
         major_alleles,
         int update_interval = 1000,
         read_batch_size = 500,
@@ -229,6 +183,10 @@ def add_bam_observations(
                     batch_locobs, major_alleles, start_bp, end_bp-1)
         
         add_batch_locobs(batch_locobs, h5lo_bam)
+
+        # try to reduce memory usage?
+        h5file.flush()
+        gc.collect()
 
         if i == max_num_reads:
             break
