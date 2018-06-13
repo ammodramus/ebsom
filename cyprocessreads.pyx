@@ -157,7 +157,6 @@ def add_bam_observations(
 
     i = 0
     
-    #reads_seen = set([])
     for start_bp in range(0, reflen, read_batch_size):
         end_bp = start_bp + read_batch_size
         batch_locobs = defaultdict(lambda: ((LocObs(), LocObs()), (LocObs(), LocObs())))
@@ -172,11 +171,6 @@ def add_bam_observations(
             mapq = read.mapping_quality
             if mapq < min_mq:
                 continue
-            #qn = read.query_name 
-            #if qn in reads_seen:
-            #    continue
-            #reads_seen.add(qn)  # not adding reads failing mapq filter, presumably faster
-            #                    # to get mapq than hash name
 
             add_observations(read, mapq, min_bq, context_len, rm,
                     bam_fn, ref, consensus, covariate_matrix,
