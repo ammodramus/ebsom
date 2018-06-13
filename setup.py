@@ -50,6 +50,8 @@ extensions = [
         define_macros = profile_macros),
     Extension("doublevec", ["doublevec.pyx"],
         define_macros = profile_macros),
+    Extension("dbgstdlib", ["dbgstdlib.pyx"],
+        define_macros = profile_macros),
     Extension("doubleveccounts", ["doubleveccounts.pyx"],
         define_macros = profile_macros),
     #Extension("cyglobal", ["cyglobal.pyx"], define_macros=[('CYTHON_TRACE',1)])
