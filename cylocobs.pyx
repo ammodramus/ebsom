@@ -54,3 +54,6 @@ cdef class LocObs(object):
 
     def __repr__(self):
         return str(self.counts())
+
+    def __del__(self):
+        free(self.c)
