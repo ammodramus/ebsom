@@ -178,6 +178,8 @@ def add_bam_observations(
         
         add_batch_locobs(batch_locobs, h5lo_bam)
 
+        del batch_locobs
+
         # try to reduce memory usage?
         h5file.flush()
         gc.collect()
