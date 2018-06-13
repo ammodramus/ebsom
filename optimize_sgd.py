@@ -1,4 +1,3 @@
-
 import scipy.optimize as opt
 import h5py
 import numpy as np
@@ -112,7 +111,7 @@ for m, M in cm_minmaxes:
 num_pf_params = 3
 
 arglist = cygradient.get_args(lo, all_majorminor)
-gradfun = cygradient.make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, f, v, regkeys, pool)
+gradfun = cygradient.make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, f, v, regkeys, pool, args.num_processes)
 grad_target = lambda pars, arglist: -1.0*gradfun(pars, arglist)
 
 num_args = len(arglist)
