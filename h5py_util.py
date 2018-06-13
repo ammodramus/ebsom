@@ -63,6 +63,25 @@ def get_locus_locobs(h5lo_locus):
 
     return loc_obs
 
+'''
+def get_locus_locobs(h5lo_locus):
+    f1shape = h5lo_locus['f1'].shape
+    f2shape = h5lo_locus['f2'].shape
+    r1shape = h5lo_locus['r1'].shape
+    r2shape = h5lo_locus['r2'].shape
+
+    loc_obs = ((
+                h5lo_locus['f1'][:,:],
+                h5lo_locus['f2'][:,:]
+            ),
+            (
+                h5lo_locus['r1'][:,:],
+                h5lo_locus['r2'][:,:]
+            ))
+
+    return loc_obs
+'''
+
 
 def get_raw_uint32_array(shape):
     n_el = np.prod(shape)
