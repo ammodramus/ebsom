@@ -39,12 +39,18 @@ parser.add_argument('--restart', help = 'parameters, one per line, at which to r
 args = parser.parse_args()
 
 dat = h5py.File(args.input, 'r')
+print '# loading cm'
 cm = dat['covariate_matrix'][:,:]
+print '# loading all_majorminor'
 all_majorminor = h5py_util.get_major_minor(dat)
+print '# obtaining column names'
 colnames_str = dat.attrs['covariate_column_names']
 colnames = colnames_str.split(',')
+
+print '# loading lo'
 lo = h5py_util.get_locobs(dat, all_majorminor)
 
+print 'normalizing cm'
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
 bam_fns = lo['chrM'].keys()
