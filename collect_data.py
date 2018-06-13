@@ -56,8 +56,6 @@ ref_names = ut.get_ref_names(args.references, bams)
 
 print('getting counts')
 all_counts = ut.get_all_counts(bams, ref_names, min_bq)
-print('getting freqs')
-all_freqs = ut.get_freqs(all_counts)
 print('getting consensus')
 all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = args.min_coverage)
 print('getting major-minor')
@@ -69,7 +67,6 @@ row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len,
         args.round_distance_by, all_consensuses, not args.no_mapq, not args.no_bam)
 
 covariate_matrices = ut.get_covariate_matrices(rowlen)
-locus_observations = ut.get_locus_observations(all_majorminor)
 
 output = h5py.File(args.output, 'w')
 h5lo = output.create_group('locus_observations')
@@ -83,8 +80,6 @@ for ref in ref_names:
         h5lo_bam = h5lo_ref.create_group(bam_fn)
         reflen = len(all_consensuses[ref][bam_fn])
         bam = bams[bam_fn]
-        counts = all_counts[ref][bam_fn]
-        freqs = all_freqs[ref][bam_fn]
         rm = row_makers[ref][bam_fn]
         mm = all_majorminor[ref][bam_fn]
         consensus = all_consensuses[ref][bam_fn]
@@ -95,7 +90,6 @@ for ref in ref_names:
 # data, another with the meta data. the names of the bams and refs can be HDF5 attributes
 
 cm = ut.collect_covariate_matrices(covariate_matrices)
-lo = ut.collect_loc_obs(locus_observations)
 # they're all the same...
 cm_names = row_makers[ref][bam_fn].get_covariate_names()
 
