@@ -42,8 +42,6 @@ extensions = [
         include_dirs = [np.get_include()],
         extra_compile_args = ['-march=native'],
         define_macros = profile_macros),
-        #include_dirs = [np.get_include()],
-        #define_macros=[('CYTHON_TRACE',1)]),
     Extension("cylikelihood", ["cylikelihood.pyx"],
         include_dirs = [np.get_include()],
         extra_compile_args = ['-march=native'],
@@ -54,7 +52,6 @@ extensions = [
         define_macros = profile_macros),
     Extension("doubleveccounts", ["doubleveccounts.pyx"],
         define_macros = profile_macros),
-    #Extension("cyglobal", ["cyglobal.pyx"], define_macros=[('CYTHON_TRACE',1)])
     Extension("cyglobal", ["cyglobal.pyx"], include_dirs = [np.get_include()],
         define_macros = profile_macros)
 ]
