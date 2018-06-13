@@ -4,7 +4,7 @@ from libc.stdlib cimport malloc, free, realloc
 np.import_array()
 
 cdef class LocObs(object):
-    def __init__(self, int init_size = 2000, double growby = 1.5):
+    def __init__(self, int init_size = 200, double growby = 1.5):
         self.c = <int *>malloc(sizeof(int) * 5 * init_size + 5)
         if not self.c:
             raise MemoryError('could not allocate X')
@@ -55,5 +55,5 @@ cdef class LocObs(object):
     def __repr__(self):
         return str(self.counts())
 
-    def __del__(self):
+    def __dealloc__(self):
         free(self.c)
