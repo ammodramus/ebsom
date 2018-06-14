@@ -574,8 +574,8 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, windows,
                     l1mf, logpf_grad, num_pf_params) for locobs, major, minor in argslist
                 ]
         grads = np.array(pool.map(
-            loc_gradient_wrapper, loc_gradient_args,
-            chunksize = len(loc_gradient_args)//num_processes))
+            #loc_gradient_wrapper, loc_gradient_args, chunksize = 1))
+            loc_gradient_wrapper, loc_gradient_args))
         grad = np.sum(grads, axis = 0)
         return grads
 
