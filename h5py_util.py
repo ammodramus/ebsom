@@ -130,5 +130,5 @@ def get_locobs(h5in, mm, update_interval = 100):
                 else:
                     bam_lo.append(empty_locobs())
             assert len(bam_lo) == seqlen
-        lo[chrom][bam] = bam_lo
+            lo[chrom][bam] = bam_lo
     return lo

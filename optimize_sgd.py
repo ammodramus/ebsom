@@ -49,7 +49,7 @@ colnames = colnames_str.split(',')
 print '# loading lo'
 lo = h5py_util.get_locobs(dat, all_majorminor)
 
-print 'normalizing cm'
+print '# normalizing cm'
 cm, cm_minmaxes = util.normalize_covariates(cm)
 
 bam_fns = lo['chrM'].keys()
