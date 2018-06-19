@@ -13,11 +13,13 @@ def add_major_minor(all_majorminor, h5mm):
 
 def get_major_minor(h5in):
     mm = {}
-    for chrom, h5_chrom_mm in h5in['major_minor'].iteritems():
+    for chrom in h5in['major_minor'].keys():
+        h5_chrom_mm = h5in['major_minor'][chrom]
         mm[chrom] = {}
-        for bam, h5_bam_mm in h5_chrom_mm.iteritems():
-            h5_bam_mm = h5_bam_mm[:,:]
-            mm[chrom][bam] = h5_bam_mm
+        for bam in h5_chrom_mm.keys():
+            h5_bam_mm = h5_chrom_mm[bam]
+            t_h5_bam_mm = h5_bam_mm[:,:].copy()
+            mm[chrom][bam] = t_h5_bam_mm
     return mm
 
 
@@ -119,7 +121,8 @@ def get_locobs(h5in, mm, update_interval = 100):
             bam_mm = chrom_mm[bam]
             seqlen = bam_mm.shape[0]
             bam_lo = []
-            for i in xrange(1, seqlen+1):
+            #for i in xrange(1, seqlen+1):
+            for i in xrange(0, seqlen):
                 loc_str = str(i)
                 if loc_str in h5lo_bam:
                     loc_obs = get_locus_locobs(h5lo_bam[loc_str])
