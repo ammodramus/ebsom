@@ -233,7 +233,6 @@ def loc_gradient(
     nbetas = nregs*nbetasperreg
     nfs = lf.shape[0]
 
-    # logaf := \log P(f) + \sum_i \log (fP(Yi|Xi,a) + (1-f)P(Yi|Xi,A) )
     logaf[:] = lpf[:]
 
     los = [locobs[0][0], locobs[0][1], locobs[1][0], locobs[1][1]]
@@ -545,7 +544,7 @@ def get_args(lo, mm):
                             break
                 if not found:
                     continue
-                args.append([locobs, major, minor])
+                args.append([locobs, major, minor, ref, bam, position])
     return args
 
 # what we want:
@@ -571,7 +570,7 @@ def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, windows,
             logprobs[reg] = Xb
         loc_gradient_args = [
                 (params, cm, logprobs, locobs, str(major), str(minor), blims, logpf, lf,
-                    l1mf, logpf_grad, num_pf_params) for locobs, major, minor in argslist
+                    l1mf, logpf_grad, num_pf_params) for locobs, major, minor, ref, bam, position in argslist
                 ]
         grads = np.array(pool.map(
             #loc_gradient_wrapper, loc_gradient_args, chunksize = 1))
