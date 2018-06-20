@@ -11,11 +11,9 @@ cdef class DoubleVecCounts:
             raise ValueError('grow_by must be > 1')
         self.data = <double *>calloc(init_size, sizeof(double))
         self.counts = <unsigned int *>calloc(init_size, sizeof(unsigned int))
-        if self.data == NULL:
+        if self.data == NULL or self.counts == NULL:
             raise MemoryError('out of memory')
         self.grow_by = grow_by
-        if self.data == NULL:
-            raise MemoryError('out of memory')
         self.size = 0
         self.max_size = init_size
         self.cur_max = -INFINITY
@@ -32,7 +30,8 @@ cdef class DoubleVecCounts:
             if new_max_size <= self.max_size:
                 raise ValueError('failed to increase vector size')
             self.data = <double *>realloc(self.data, sizeof(double)*new_max_size)
-            if not self.data:
+            self.counts = <unsigned int *>realloc(self.counts, sizeof(unsigned int)*new_max_size)
+            if (not self.data) or (not self.counts):
                 raise MemoryError('out of memory')
             self.max_size = new_max_size
 
