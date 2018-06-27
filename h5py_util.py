@@ -67,6 +67,7 @@ def get_locus_locobs(h5lo_locus):
     return loc_obs
 '''
 
+'''
 def get_locus_locobs(h5lo_locus):
     f1shape = h5lo_locus['f1'].shape
     f2shape = h5lo_locus['f2'].shape
@@ -83,14 +84,9 @@ def get_locus_locobs(h5lo_locus):
             ))
 
     return loc_obs
-
 '''
-def get_locus_locobs(h5lo_locus):
-    f1shape = h5lo_locus['f1'].shape
-    f2shape = h5lo_locus['f2'].shape
-    r1shape = h5lo_locus['r1'].shape
-    r2shape = h5lo_locus['r2'].shape
 
+def get_locus_locobs(h5lo_locus):
     loc_obs = ((
                 h5lo_locus['f1'],
                 h5lo_locus['f2']
@@ -101,7 +97,6 @@ def get_locus_locobs(h5lo_locus):
             ))
 
     return loc_obs
-'''
 
 
 def get_raw_uint32_array(shape):
@@ -109,7 +104,7 @@ def get_raw_uint32_array(shape):
     arr = np.frombuffer(RawArray(ctypes.c_uint32, n_el), dtype = np.uint32).reshape(shape)
     return arr
 
-def get_locobs(h5in, mm, update_interval = 100):
+def get_locobs(h5in, mm):
     lo = {}
     for chrom, h5lo_chrom in h5in['locus_observations'].iteritems():
         chrom_mm = mm[chrom]
@@ -121,14 +116,37 @@ def get_locobs(h5in, mm, update_interval = 100):
             bam_mm = chrom_mm[bam]
             seqlen = bam_mm.shape[0]
             bam_lo = []
-            #for i in xrange(1, seqlen+1):
             for i in xrange(0, seqlen):
                 loc_str = str(i)
                 if loc_str in h5lo_bam:
                     loc_obs = get_locus_locobs(h5lo_bam[loc_str])
                     bam_lo.append(loc_obs)
                 else:
-                    bam_lo.append(empty_locobs())
+                    bam_lo.append(None)
             assert len(bam_lo) == seqlen
             lo[chrom][bam] = bam_lo
     return lo
+
+def get_covariate_matrices(h5in, mm):
+    cm = {}
+    for chrom, h5cm_chrom in h5in['covariate_matrices'].iteritems():
+        chrom_mm = mm[chrom]
+        cm[chrom] = {}
+        bams = h5cm_chrom.keys()
+        for bam in bams:
+            bam_mm = chrom_mm[bam]
+            seqlen = bam_mm.shape[0]
+            h5cm_bam = h5cm_chrom[bam]
+            print '# loading covariate matrices for {} ({} of {})'.format(bam, bams.index(bam)+1, len(bams))
+            bam_cm = []
+            for i in xrange(0, seqlen):
+                loc_str = str(i)
+                if loc_str in h5cm_bam.keys():
+                    loc_cm = h5cm_bam[loc_str]
+                    bam_cm.append(loc_cm)
+                else:
+                    bam_cm.append([])
+            assert len(bam_cm) == seqlen
+            cm[chrom][bam] = bam_cm
+    return cm
+

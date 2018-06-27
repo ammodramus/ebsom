@@ -1,4 +1,5 @@
 import numpy as np
+from itertools import izip
 from numba import jit
 from scipy.special import logsumexp
 import likelihood as lik
@@ -580,3 +581,31 @@ def grad_locus_log_likelihood(params, ref, bam, position, cm, lo, mm, blims,
                 blims, logpf, lf, l1mf) )
 
         return logsumexp(loc_lls) - np.log(3.0)  # divide by 3, averaging
+
+
+def batch_gradient_func(params, argslist, rowlen, blims, lf, l1mf, num_pf_params, freqs,
+        windows, regs, h5lo, h5cm, pool):
+    betas = params[:-num_pf_params]
+    pf_params = params[-num_pf_params:]
+    logpf = bws.get_lpf(pf_params, freqs, windows)
+    logpf_grad = bws.get_gradient(pf_params,freqs,windows)
+
+    
+    batch_h5_keys = [el[0] for el in argslist]
+
+    locobs = [h5lo[key] for key in batch_h5_keys]
+    locobs = ((el[0][0][:,:], el[0][1][:,:]), ((el[1][0][:,:]), el[1][1][:,:]))
+
+    loccms = [h5cm[key][:,:] for key in batch_h5_keys]
+
+    loc_gradient_args = [
+            (params, loccm, lo, str(major), str(minor),
+                blims, logpf, lf, l1mf, logpf_grad, num_pf_params, regs,
+                rowlen) for (key, major, minor, ref, bam, position), loccm, lo in
+            izip(argslist, loccms, locobs)
+            ]
+    grads = np.array(pool.map(
+        loc_gradient_wrapper_calc_logprobs, loc_gradient_args))
+    grad = np.sum(grads, axis = 0)
+    return grads
+

@@ -167,6 +167,23 @@ cdef void collect_alpha_delta_log_summands(
 def loc_gradient_wrapper(args):
     return loc_gradient(*args)
 
+def loc_gradient_wrapper_calc_logprobs(args):
+    (params, loccm, locobs, major,
+            minor, blims, logpf, lf, l1mf, logpf_grad, num_pf_params,
+            regs, rowlen) = args
+    logprobs = {}
+    X = loccm[:,:]
+    betas = params[:-num_pf_params]
+    rmajor, rminor = cut.comp(major), cut.comp(minor)
+    for reg in regs:
+        low, high = blims[reg]
+        b = betas[low:high].reshape((rowlen,-1), order = 'F')
+        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+        Xb -= logsumexp(Xb, axis = 1)[:,None]
+        logprobs[reg] = Xb
+    return loc_gradient(params, X, logprobs, locobs, major, minor, blims,
+            logpf, lf, l1mf, logpf_grad, num_pf_params)
+
 def loc_gradient(
         np.ndarray[ndim=1,dtype=np.float64_t] params,
         #double [:,::1] cm,
@@ -527,12 +544,13 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     return loc_grad
 
 
-def get_args(lo, mm):
+def get_args(lo, cm, mm):
     args = []
     for ref in lo.keys():
         for bam in lo[ref].keys():
             for position in range(len(lo[ref][bam])):
                 locobs = lo[ref][bam][position]
+                loccm = cm[ref][bam][position]
                 major, minor = mm[ref][bam][position]
                 if major == 'N':
                     continue
@@ -544,41 +562,8 @@ def get_args(lo, mm):
                             break
                 if not found:
                     continue
-                args.append([locobs, major, minor, ref, bam, position])
+                args.append([locobs, loccm, major, minor, ref, bam, position])
     return args
-
-# what we want:
-#  - a function that takes a list of (locobs, major, minor) and returns the
-#    gradient, calculated using the pool
-def make_batch_gradient_func(cm, blims, lf, l1mf, num_pf_params, freqs, windows, regs, pool, num_processes):
-    rowlen = cm.shape[1]
-
-    def f(params, argslist):
-        betas = params[:-num_pf_params]
-        pf_params = params[-num_pf_params:]
-        f = freqs
-        v = windows
-        logpf = bws.get_lpf(pf_params, f, v)
-        logpf_grad = bws.get_gradient(pf_params,f,v)
-        logprobs = {}
-        X = cm
-        for reg in regs:
-            low, high = blims[reg]
-            b = betas[low:high].reshape((rowlen,-1), order = 'F')
-            Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
-            Xb -= logsumexp(Xb, axis = 1)[:,None]
-            logprobs[reg] = Xb
-        loc_gradient_args = [
-                (params, cm, logprobs, locobs, str(major), str(minor), blims, logpf, lf,
-                    l1mf, logpf_grad, num_pf_params) for locobs, major, minor, ref, bam, position in argslist
-                ]
-        grads = np.array(pool.map(
-            #loc_gradient_wrapper, loc_gradient_args, chunksize = 1))
-            loc_gradient_wrapper, loc_gradient_args))
-        grad = np.sum(grads, axis = 0)
-        return grads
-
-    return f
 
 def gradient(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
         regs, num_f, num_pf_params, pool):
