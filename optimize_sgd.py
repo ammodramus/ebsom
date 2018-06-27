@@ -139,7 +139,8 @@ remaining_args = [rowlen, blims, lf, l1mf, num_pf_params, freqs,
         windows, regkeys, h5lo, h5cm, pool]
 
 # TODO get the -1 right. want to maximize the likelihood
-grad_target = gradient.batch_gradient_func
+def grad_target(*args, **kwargs):
+    return -1.0*gradient.batch_gradient_func(*args, **kwargs)
 
 n_completed_reps = 0
 while True:
