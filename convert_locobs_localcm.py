@@ -6,8 +6,8 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import h5py
-
 import util
+import argparse
 
 parser = argparse.ArgumentParser(
         description='convert collapsed covariate matrices to expanded',
