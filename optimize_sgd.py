@@ -82,16 +82,19 @@ for chrom, chrom_lo in h5lo.iteritems():
             name = unicode('/'.join(spname[2:]))
             h5lo_keys.append(name)
 assert set(h5lo_keys) == set(h5cm_keys), "covariate matrix and locus observation keys differ"
-    
-bam_fns = lo['chrM'].keys()
 
+locus_keys = h5cm_keys
+    
 # badloci.txt is 1-based, these will be 0-based. notice chrM is hard-coded
 if args.bad_locus_file is not None:
-    badloci = np.loadtxt(args.bad_locus_file).astype(np.int)-1
-    for bam in bam_fns:
-        for bl in badloci:
-            all_majorminor['chrM'][bam][bl] = ('N', 'N')
-            lo['chrM'][bam][bl] = [[[],[]], [[],[]]]
+    badloci = set(list(np.loadtxt(args.bad_locus_file).astype(np.int)-1))
+    good_keys = []
+    for key in locus_keys:
+        locus = int(key.split('/')[-1])
+        if locus not in badloci:
+            good_keys.append(key)
+else:
+    good_keys = h5cm_keys
 
 regkeys = [(b, r) for b in 'ACGT' for r in (1,2)]
 rowlen = dat.attrs['rowlen']
@@ -113,13 +116,12 @@ else:
     pars = np.concatenate((betas, (a,b,z)))
 
 
-
 #for m, M in cm_minmaxes:
 #    print '# mM {}\t{}'.format(m,M)
 
 num_pf_params = 3
 
-arglist = cygradient.get_args(lo, cm, all_majorminor)
+arglist = gradient.get_args(locus_keys, all_majorminor)
 
 num_args = len(arglist)
 split_at = np.arange(0, num_args, args.batch_size)[1:]
@@ -134,7 +136,7 @@ v = 0
 t = 0
 
 remaining_args = [rowlen, blims, lf, l1mf, num_pf_params, freqs,
-        windows, regkeys, pool]
+        windows, regkeys, h5lo, h5cm, pool]
 
 # TODO get the -1 right. want to maximize the likelihood
 grad_target = gradient.batch_gradient_func

@@ -544,27 +544,6 @@ def loc_gradient_make_buffers(params, ref, bam, position, cm, lo, mm, blims,
     return loc_grad
 
 
-def get_args(lo, cm, mm):
-    args = []
-    for ref in lo.keys():
-        for bam in lo[ref].keys():
-            for position in range(len(lo[ref][bam])):
-                locobs = lo[ref][bam][position]
-                loccm = cm[ref][bam][position]
-                major, minor = mm[ref][bam][position]
-                if major == 'N':
-                    continue
-                found = False
-                for i in [0,1]:
-                    for j in [0,1]:
-                        if locobs[i][j].shape[0] > 0:
-                            found = True
-                            break
-                if not found:
-                    continue
-                args.append([locobs, loccm, major, minor, ref, bam, position])
-    return args
-
 def gradient(params, cm, lo, mm, blims, rowlen, freqs, windows, lf, l1mf,
         regs, num_f, num_pf_params, pool):
     betas = params[:-num_pf_params]

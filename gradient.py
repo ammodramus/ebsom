@@ -7,6 +7,8 @@ import afd
 import util as ut
 import beta_with_spikes_integrated as bws
 
+import cygradient
+
 
 @jit
 def obs_partial_derivs(obs_idx, X, lP):
@@ -594,18 +596,30 @@ def batch_gradient_func(params, argslist, rowlen, blims, lf, l1mf, num_pf_params
     batch_h5_keys = [el[0] for el in argslist]
 
     locobs = [h5lo[key] for key in batch_h5_keys]
-    locobs = ((el[0][0][:,:], el[0][1][:,:]), ((el[1][0][:,:]), el[1][1][:,:]))
+    locobs = [((el['f1'][:,:], el['f2'][:,:]), ((el['r1'][:,:]), el['r2'][:,:])) for el in locobs]
 
     loccms = [h5cm[key][:,:] for key in batch_h5_keys]
 
     loc_gradient_args = [
             (params, loccm, lo, str(major), str(minor),
                 blims, logpf, lf, l1mf, logpf_grad, num_pf_params, regs,
-                rowlen) for (key, major, minor, ref, bam, position), loccm, lo in
+                rowlen) for (key, major, minor), loccm, lo in
             izip(argslist, loccms, locobs)
             ]
     grads = np.array(pool.map(
-        loc_gradient_wrapper_calc_logprobs, loc_gradient_args))
+        cygradient.loc_gradient_wrapper_calc_logprobs, loc_gradient_args))
     grad = np.sum(grads, axis = 0)
     return grads
+
+def get_args(locus_keys, mm):
+    # args will be key, major, minor
+    args = []
+    for key in locus_keys:
+        chrom, bam, locus = key.split('/')
+        locus = int(locus)
+        major, minor = mm[chrom][bam][locus]
+        if major == 'N':
+            continue
+        args.append([key, major, minor])
+    return args
 
