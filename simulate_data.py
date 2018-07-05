@@ -56,7 +56,7 @@ params = np.loadtxt(args.parameters)
 locus_keys = h5cm_keys
 
 regkeys = [(b, r) for b in 'ACGT' for r in (1,2)]
-rowlen = fin.attrs['rowlen']
+rowlen = int(fin.attrs['rowlen'])
 blims = {}
 for i, reg in enumerate(regkeys):
     low = rowlen*3*i
@@ -76,7 +76,10 @@ logpf = bws.get_lpf(pf_params, freqs, windows)
 pf = np.exp(logpf)
 
 with h5py.File(args.output, 'w') as fout:
-    for key in locus_keys:
+    fout_lo = fout.create_group('locus_observations')
+    for key_idx, key in enumerate(locus_keys):
+        if key_idx % 10 == 0:
+            print '# locus {} of {}'.format(key_idx, len(locus_keys))
         X = h5cm[key][:,:]
         lo = h5lo[key]
         spkey = key.split('/')
@@ -110,7 +113,7 @@ with h5py.File(args.output, 'w') as fout:
                 'r1': (rminor, 1), 'r2': (rminor, 2)}
         directions = ['f1', 'f2', 'r1', 'r2']
 
-        out_locus = fout.create_group(key)
+        out_locus = fout_lo.create_group(key)
 
         for direc in directions:
             direc_lo = lo[direc][:,:]
@@ -130,7 +133,8 @@ with h5py.File(args.output, 'w') as fout:
                 all_obs = minor_obs + major_obs
                 tobs = np.concatenate(((cm_idx,), all_obs))
                 direc_obs.append(tobs)
-            out_locus.create_dataset(direc, data = np.array(direc_obs).astype(np.int))
+            out_locus.create_dataset(direc, data = np.array(direc_obs).astype(np.int), compression = 'gzip',
+                    compression_opts = 9)
     fout.copy(fin['covariate_matrices'], 'covariate_matrices')
     fout.copy(fin['major_minor'], 'major_minor')
     for key in fin.attrs.keys():
