@@ -596,9 +596,19 @@ def batch_gradient_func(params, argslist, rowlen, blims, lf, l1mf, num_pf_params
     batch_h5_keys = [el[0] for el in argslist]
 
     locobs = [h5lo[key] for key in batch_h5_keys]
-    locobs = [((el['f1'][:,:], el['f2'][:,:]), ((el['r1'][:,:]), el['r2'][:,:])) for el in locobs]
+    locobs = [[[
+        np.atleast_2d(el['f1'][:].astype(np.uint32)),
+        np.atleast_2d(el['f2'][:].astype(np.uint32))], [
+            np.atleast_2d(el['r1'][:].astype(np.uint32)),
+            np.atleast_2d(el['r2'][:].astype(np.uint32))]] for el in locobs]
 
-    loccms = [h5cm[key][:,:] for key in batch_h5_keys]
+    #print 'locobs shapes:', [el[i][j].shape for el in locobs for i in range(2) for j in range(2)]
+    #print 'any 0-column matrices:', any([el[i][j].shape[1] == 0 for el in locobs for i in range(2) for j in range(2)])
+
+    loccms = [np.atleast_2d(h5cm[key][:]) for key in batch_h5_keys]
+    assert not any([el.shape[0] == 0 for el in loccms]), 'found empty cm'
+
+    #print 'cm shapes:', [el.shape for el in loccms]
 
     loc_gradient_args = [
             (params, loccm, lo, str(major), str(minor),
