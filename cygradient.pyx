@@ -189,7 +189,7 @@ def loc_gradient(
         #double [:,::1] cm,
         np.ndarray[dtype=np.float64_t,ndim=2] cm,
         dict logprobs,
-        tuple locobs,
+        locobs,
         bytes major,
         bytes minor,
         dict blims,
@@ -262,6 +262,8 @@ def loc_gradient(
     # calculate the logaf's
     for i in range(len(los)):
         lo = los[i]
+        if lo.shape[1] == 0:
+            continue
         lpA = lpAs[i]
         lpa = lpas[i]
         nlo = lo.shape[0]
@@ -362,40 +364,44 @@ def loc_gradient(
                 lpA = logprobs[(major, readno)]
                 lpa = logprobs[(minor, readno)]
                 lo = locobs[0][readno-1]
-                collect_alpha_delta_log_summands(X_idx, outcome,
-                        lo, lpA, lpa, cm, is_major, lf, l1mf,
-                        l_log_alpha_log_summands,
-                        l_log_delta_log_summands)
+                if lo.shape[1] > 0:
+                    collect_alpha_delta_log_summands(X_idx, outcome,
+                            lo, lpA, lpa, cm, is_major, lf, l1mf,
+                            l_log_alpha_log_summands,
+                            l_log_delta_log_summands)
             if base == minor:
                 # process as if base is minor
                 is_major = False
                 lpA = logprobs[(major, readno)]
                 lpa = logprobs[(minor, readno)]
                 lo = locobs[0][readno-1]
-                collect_alpha_delta_log_summands(X_idx, outcome,
-                        lo, lpA, lpa, cm, is_major, lf, l1mf,
-                        l_log_alpha_log_summands,
-                        l_log_delta_log_summands)
+                if lo.shape[1] > 0:
+                    collect_alpha_delta_log_summands(X_idx, outcome,
+                            lo, lpA, lpa, cm, is_major, lf, l1mf,
+                            l_log_alpha_log_summands,
+                            l_log_delta_log_summands)
             if base == rmajor:
                 # process as if base is rmajor
                 is_major = True
                 lpA = logprobs[(rmajor, readno)]
                 lpa = logprobs[(rminor, readno)]
                 lo = locobs[1][readno-1]
-                collect_alpha_delta_log_summands(X_idx, outcome,
-                        lo, lpA, lpa, cm, is_major, lf, l1mf,
-                        l_log_alpha_log_summands,
-                        l_log_delta_log_summands)
+                if lo.shape[1] > 0:
+                    collect_alpha_delta_log_summands(X_idx, outcome,
+                            lo, lpA, lpa, cm, is_major, lf, l1mf,
+                            l_log_alpha_log_summands,
+                            l_log_delta_log_summands)
             if base == rminor:
                 # process as if base is rminor
                 is_major = False
                 lpA = logprobs[(rmajor, readno)]
                 lpa = logprobs[(rminor, readno)]
                 lo = locobs[1][readno-1]
-                collect_alpha_delta_log_summands(X_idx, outcome,
-                        lo, lpA, lpa, cm, is_major, lf, l1mf,
-                        l_log_alpha_log_summands,
-                        l_log_delta_log_summands)
+                if lo.shape[1] > 0:
+                    collect_alpha_delta_log_summands(X_idx, outcome,
+                            lo, lpA, lpa, cm, is_major, lf, l1mf,
+                            l_log_alpha_log_summands,
+                            l_log_delta_log_summands)
 
                 # calculate logabsbf[fidx]
             for fidx in range(nfs):
