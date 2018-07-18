@@ -37,6 +37,8 @@ parser.add_argument('--num-reps', type = int, default = 100)
 parser.add_argument('--batch-size', type = int, default = 20)
 parser.add_argument('--alpha', type = float, default = 0.01)
 parser.add_argument('--restart', help = 'parameters, one per line, at which to restart optimization')
+parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, default = 0,
+        help = 'number of loci to consider before allowing polymoprhism')
 args = parser.parse_args()
 
 
@@ -138,9 +140,40 @@ t = 0
 remaining_args = [rowlen, blims, lf, l1mf, num_pf_params, freqs,
         windows, regkeys, h5lo, h5cm, pool]
 
-# TODO get the -1 right. want to maximize the likelihood
 def grad_target(*args, **kwargs):
     return -1.0*gradient.batch_gradient_func(*args, **kwargs)
+
+
+num_initial_training = 0
+initial_pf_params = np.array((-1,0.5,30))
+W[-num_pf_params:] = initial_pf_params[:]
+t = 0
+while num_initial_training < args.num_no_polymorphism_training_batches:
+    permuted_args = npr.permutation(arglist)
+    batches = np.array_split(permuted_args, split_at)
+    for j, batch in enumerate(batches):
+        t += 1
+        num_initial_training += 1
+
+        Wgrad = np.sum(grad_target(W, batch, *remaining_args), axis = 0)
+        m = b1*m + (1-b1)*Wgrad
+        v = b2*v + (1-b2)*(Wgrad*Wgrad)
+        mhat = m/(1-b1**t)
+        vhat = v/(1-b2**t)
+        W += -alpha * mhat / (np.sqrt(vhat) + eps)
+        # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
+        W[-num_pf_params:] = initial_pf_params[:]
+        ttime = str(datetime.datetime.now()).replace(' ', '_')
+        print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
+        if num_initial_training >= args.num_no_polymorphism_training_batches:
+            break
+
+m = 0
+v = 0
+t = 0
+
+post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
+W[-num_pf_params:] = post_init_pf_params[:]
 
 n_completed_reps = 0
 while True:
