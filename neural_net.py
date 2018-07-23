@@ -94,10 +94,10 @@ def get_major_minor_cm_and_los(cm, lo, major, minor):
             direc_minor = str(minor) if direc_idx == 0 else cut.comp(str(minor))
             major_col_idx = 'ACGT'.index(direc_major)
             major_base_columns = np.zeros((tcm.shape[0], 4))
-            major_base_columns[major_col_idx] = 1.0
+            major_base_columns[:, major_col_idx] = 1.0
             minor_col_idx = 'ACGT'.index(direc_minor)
             minor_base_columns = np.zeros((tcm.shape[0], 4))
-            minor_base_columns[minor_col_idx] = 1.0
+            minor_base_columns[:, minor_col_idx] = 1.0
             major_cm = np.column_stack((major_base_columns, readtwos[:,np.newaxis], tcm))
             major_cms.append(major_cm)
             minor_cm = np.column_stack((minor_base_columns, readtwos[:,np.newaxis], tcm))
