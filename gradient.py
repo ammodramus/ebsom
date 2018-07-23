@@ -2,7 +2,6 @@ import numpy as np
 from itertools import izip
 from numba import jit
 from scipy.special import logsumexp
-import likelihood as lik
 import afd
 import util as ut
 import beta_with_spikes_integrated as bws
