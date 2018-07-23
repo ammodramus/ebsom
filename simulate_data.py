@@ -116,7 +116,7 @@ with h5py.File(args.output, 'w') as fout:
         out_locus = fout_lo.create_group(key)
 
         for direc in directions:
-            direc_lo = lo[direc][:,:]
+            direc_lo = lo[direc][:]
             direc_obs = []
             for distobs in direc_lo:
                 cm_idx = distobs[0]
