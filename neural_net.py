@@ -86,7 +86,7 @@ def get_major_minor_cm_and_los(cm, lo, major, minor):
     for direc_idx in [0,1]:
         for rn_idx in [0,1]:
             tlo = lo[direc_idx][rn_idx]
-            if tlo.shape[0] == 0 or tlo.shape[1] == 0:
+            if 0 in tlo.shape:
                 continue
             tcm = cm[tlo[:,0]]
             readtwos = np.ones(tlo.shape[0]) * rn_idx
