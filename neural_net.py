@@ -412,10 +412,17 @@ def get_loglike_and_gradient(params, major_cm, minor_cm, all_los, matrices, num_
         pf_pars[i] -= eps  # fix the eps
         dpfs = (pf2-pf)/eps
         filt = dpfs >= 0
-        pos_log = logsumexp(np.log(dpfs[filt]) + b_sums[filt]) - logdenom
-        neg_log = logsumexp(ne.evaluate('log(abs(x))', local_dict = {'x': dpfs[~filt]}) + b_sums[~filt]) - logdenom
+        if np.any(filt):
+            pos_log = logsumexp(np.log(dpfs[filt]) + b_sums[filt]) - logdenom
+        else:
+            pos_log = -np.inf
+        if np.any(~filt):
+            neg_log = logsumexp(ne.evaluate('log(abs(x))', local_dict = {'x': dpfs[~filt]}) + b_sums[~filt]) - logdenom
+        else:
+            neg_log = -np.inf
         ret[i] = np.exp(pos_log) - np.exp(neg_log)
     
+    # pf_params come first!
     ret[num_pf_params:] = np.exp(logabs_num_pos)-np.exp(logabs_num_neg)
     
     return logdenom, ret
@@ -448,7 +455,7 @@ def get_loglike(params, cm, lo, matrices, num_pf_params, freqs, windows, major, 
     return ll
 
 def loglike_and_gradient_wrapper(params, cm, lo, num_obs, maj, mino, hidden_layer_sizes, num_pf_params, freqs, windows):
-    num_obs = cm.shape[0]
+    num_obs = sum([lo[i][j].shape[0] for i in range(2) for j in range(2) if 0 not in lo[i][j].shape])
     if mino == 'N':
         alt_minors = [base for base in 'ACGT' if base != maj]
         gradients = []
