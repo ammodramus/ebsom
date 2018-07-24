@@ -168,8 +168,7 @@ while num_initial_training < args.num_no_polymorphism_training_batches:
     for j, batch in enumerate(batches):
         t += 1
         num_initial_training += 1
-
-        Wgrad = np.sum(grad_target(W, batch, *remaining_args), axis = 0)
+        Wgrad = grad_target(W, batch, *remaining_args)
         m = b1*m + (1-b1)*Wgrad
         v = b2*v + (1-b2)*(Wgrad*Wgrad)
         mhat = m/(1-b1**t)
@@ -195,8 +194,7 @@ while True:
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
         t += 1
-
-        Wgrad = np.sum(grad_target(W, batch, *remaining_args), axis = 0)
+        Wgrad = grad_target(W, batch, *remaining_args)
         m = b1*m + (1-b1)*Wgrad
         v = b2*v + (1-b2)*(Wgrad*Wgrad)
         mhat = m/(1-b1**t)
