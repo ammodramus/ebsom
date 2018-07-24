@@ -60,6 +60,10 @@ betas = []
 for parset in pars:
     betas.append(parset[:-num_pf_params])
 
+
+for parfile_idx, parfile in enumerate(args.params):
+    print '# parameter file {}: {}'.format(parfile_idx, parfile)
+
 column_names = []
 column_names.extend(['direction', 'major', 'minor', 'rmajor', 'rminor', 'chrom', 'bam', 'locus'])
 for param_idx, param in enumerate(args.params):
