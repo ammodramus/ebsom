@@ -22,8 +22,15 @@ def softplus(a):
 def d_softplus(a):
     return 1/(1+np.exp(-a))
 
-activ = softplus
-d_activ = d_softplus
+def tanh(x):
+    return np.tanh(x)
+
+def d_tanh(x):
+    ex = np.exp(x)
+    return 4/(1.0/ex+ex)**2
+
+activ = tanh
+d_activ = d_tanh
 
 def softmax(a):
     expa = np.exp(a)
