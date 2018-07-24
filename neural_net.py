@@ -218,6 +218,30 @@ def neural_net_logprobs_wrapper(params, inputs, matrices):
             weighted_inputs, activations)
     return logprobs
 
+def register_activation_function(act_fun_type):
+    global activ
+    global d_activ
+    if act_fun_type == 'relu':
+        global relu
+        global d_relu
+        activ = relu
+        d_activ = d_relu
+    elif act_fun_type == 'softplus':
+        global softplus
+        global d_softplus
+        activ = softplus
+        d_activ = d_softplus
+    elif act_fun_type == 'tanh':
+        global tanh
+        global d_softplus
+        activ = tanh
+        d_activ = d_tanh
+    else:  # tanh is also the default. repeated for clarity
+        global tanh
+        global d_softplus
+        activ = tanh
+        d_activ = d_tanh
+
 
 def neural_net_logprobs_and_gradients_wrapper(params, inputs, matrices):
     weights, biases, weighted_inputs, activations, deriv_activations, deltas = matrices

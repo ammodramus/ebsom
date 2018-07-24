@@ -43,8 +43,11 @@ parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, 
         help = 'number of loci to consider before allowing polymoprhism')
 parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [50],
         help = 'hidden layer sizes, space-delimited')
+parser.add_argument('--activation-function', choices = ('softplus', 'relu', 'tanh'), default = 'tanh')
 args = parser.parse_args()
 
+print('# registering activation function: {}'.format(args.activation_function))
+nn.register_activation_function(args.activation_function)
 
 import schwimmbad
 if args.mpi:
