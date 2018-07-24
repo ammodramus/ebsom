@@ -17,6 +17,8 @@ from scipy.special import logsumexp
 import cyutil as cut
 import numpy.random as npr
 
+import neural_net as nn
+
 import h5py_util
 
 parser = argparse.ArgumentParser(
@@ -27,7 +29,13 @@ parser.add_argument('params',
         help = 'file(s) with parameters, one per line. do not include allele-frequency distribution parameters',
         nargs = '+')
 parser.add_argument('--num-loci', type = int, help = 'randomly sample this many loci from each bam')
+parser.add_argument('--seed', type = int, help = 'random seed for using same loci across runs')
+parser.add_argument('--neural-net', action = 'store_true', help = 'specify if parameters are for neural net')
+parser.add_argument('--hidden-layer-sizes', type = int, nargs = '+', help = 'number of hidden layers in neural net')
 args = parser.parse_args()
+
+if args.seed is not None:
+    npr.seed(args.seed)
 
 print '#' + ' '.join(sys.argv)
 
@@ -81,17 +89,38 @@ for chrom in h5cm.keys():
             sampled_loci = h5cm[chrom][bam].keys()
         for locus in sampled_loci:
             tcm = h5cm[chrom][bam][locus][:]
-            X = tcm
-            logprobs = []
-            for betaset in betas:
-                tlogprobs = {}
-                for reg in regkeys:
-                    low, high = blims[reg]
-                    b = betaset[low:high].reshape((rowlen,-1), order = 'F')
-                    Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
-                    Xb -= logsumexp(Xb, axis = 1)[:,None]
-                    tlogprobs[reg] = Xb
-                logprobs.append(tlogprobs)
+            if not args.neural_net:
+                X = tcm
+                logprobs = []
+                for betaset in betas:
+                    tlogprobs = {}
+                    for reg in regkeys:
+                        low, high = blims[reg]
+                        b = betaset[low:high].reshape((rowlen,-1), order = 'F')
+                        Xb = np.column_stack((np.dot(X,b), np.zeros(X.shape[0])))
+                        Xb -= logsumexp(Xb, axis = 1)[:,None]
+                        tlogprobs[reg] = Xb
+                    logprobs.append(tlogprobs)
+            else:   # args.neural_net
+                # for each parameter set (betaset, need to change):
+                #     for each 'regression' ('A',1), ('A',2), etc..., form the
+                #     cm matrix, get the logprobs, store in the logprobs for the parameter set
+                logprobs = []
+                for betaset in betas:  # these are all of the neural net parameters
+                    tlogprobs = {}
+                    for reg in regkeys:
+                        # construct the cm with the true allele and read number (ie the 'reg')
+                        base_columns = np.zeros((tcm.shape[0], 4))
+                        base_columns[:,'ACGT'.index(reg[0])] = 1.0
+                        readtwos = np.ones(tcm.shape[0]) * (reg[1] == 2)
+                        regcm = np.column_stack((base_columns, readtwos, tcm))
+                        # get matrices
+                        num_inputs = regcm.shape[1]
+                        num_obs = regcm.shape[0]
+                        matrices, num_params = nn.set_up_neural_net(num_inputs, args.hidden_layer_sizes, num_obs)
+                        tlogprobs[reg] = nn.neural_net_logprobs_wrapper(betaset, regcm.T, matrices).T
+                    logprobs.append(tlogprobs)
+
             loc_int = int(locus)
             major, minor = tmm[loc_int,:]
             major, minor = str(major), str(minor)
