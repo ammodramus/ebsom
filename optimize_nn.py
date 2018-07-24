@@ -128,7 +128,8 @@ else:
     betas = npr.uniform(-0.2, 0.2, size = num_params)
     num_pf_params = 3
     a, b, z = -1, 0.5, 8
-    pars = np.concatenate((betas, (a,b,z)))
+    # note: pf_params come first
+    pars = np.concatenate(((a,b,z), betas))
 
 
 arglist = gradient.get_args(good_keys, all_majorminor)  # each element is (key, major, minor)
@@ -162,8 +163,8 @@ def grad_target(params, batch, pool, hidden_layer_sizes, num_pf_params, freqs, w
     return -1.0*grad
 
 num_initial_training = 0
-initial_pf_params = np.array((-1,0.5,30))
-W[-num_pf_params:] = initial_pf_params[:]
+initial_pf_params = np.array((-1,0.5,20))
+W[:num_pf_params] = initial_pf_params[:]
 t = 0
 while num_initial_training < args.num_no_polymorphism_training_batches:
     permuted_args = npr.permutation(arglist)
@@ -178,7 +179,8 @@ while num_initial_training < args.num_no_polymorphism_training_batches:
         vhat = v/(1-b2**t)
         W += -alpha * mhat / (np.sqrt(vhat) + eps)
         # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
-        W[-num_pf_params:] = initial_pf_params[:]
+        #W[-num_pf_params:] = initial_pf_params[:]
+        W[:num_pf_params] = initial_pf_params[:]
         ttime = str(datetime.datetime.now()).replace(' ', '_')
         print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
         if num_initial_training >= args.num_no_polymorphism_training_batches:
