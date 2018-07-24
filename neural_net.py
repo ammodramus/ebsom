@@ -29,6 +29,10 @@ def d_tanh(x):
     ex = np.exp(x)
     return 4/(1.0/ex+ex)**2
 
+#activ = softplus
+#d_activ = d_softplus
+#activ = relu
+#d_activ = d_relu
 activ = tanh
 d_activ = d_tanh
 
@@ -85,7 +89,6 @@ def broadcast_d_logsoftmax(logprobs):
         out[:,j,:] = d_logsoftmax(logprobs[:,j])
     return out
 
-
 def get_major_minor_cm_and_los(cm, lo, major, minor):
     major_cms = []
     minor_cms = []
@@ -110,42 +113,15 @@ def get_major_minor_cm_and_los(cm, lo, major, minor):
             major_cms.append(major_cm)
             minor_cm = np.column_stack((minor_base_columns, readtwos[:,np.newaxis], tcm))
             minor_cms.append(minor_cm)
-            tlo[:,0] += cur_lo_idx   # first column indexes the entry in cm, so need to update this as we construct cm
+            # don't actually need the first column... just need the counts! the first column of tlo doesn't matter at all
             los.append(tlo)
             cur_lo_idx += tlo.shape[0]
     major_cm = np.row_stack(major_cms)
     minor_cm = np.row_stack(minor_cms)
     all_los = np.row_stack(los)
+    all_los[:,0] = -1  # just to better indicate that these values don't matter
+    assert all_los.shape[0] == major_cm.shape[0] and major_cm.shape == minor_cm.shape
     return major_cm, minor_cm, all_los
-'''
-def get_major_minor_cm_and_los(cm, lo, major, minor):
-    major_cms = []
-    minor_cms = []
-    los = []
-    for direc in 'fr':
-        for rn in '12':
-            key = direc + rn
-            tlo = lo[key][:]
-            tcm = cm[tlo[:,0]]
-            readtwos = np.ones(tlo.shape[0]) * (int(rn)-1)
-            direc_major = str(major) if direc == 'f' else cut.comp(str(major))
-            direc_minor = str(minor) if direc == 'f' else cut.comp(str(minor))
-            major_col_idx = 'ACGT'.index(direc_major)
-            major_base_columns = np.zeros((tcm.shape[0], 4))
-            major_base_columns[major_col_idx] = 1.0
-            minor_col_idx = 'ACGT'.index(direc_minor)
-            minor_base_columns = np.zeros((tcm.shape[0], 4))
-            minor_base_columns[minor_col_idx] = 1.0
-            major_cm = np.column_stack((major_base_columns, readtwos[:,np.newaxis], tcm))
-            major_cms.append(major_cm)
-            minor_cm = np.column_stack((minor_base_columns, readtwos[:,np.newaxis], tcm))
-            minor_cms.append(minor_cm)
-            los.append(tlo)
-    major_cm = np.row_stack(major_cms)
-    minor_cm = np.row_stack(minor_cms)
-    all_los = np.row_stack(los)
-    return major_cm, minor_cm, all_los
-'''
 
 
 # get distribution frequencies and windows
@@ -487,6 +463,7 @@ if __name__ == '__main__':
     fin = h5py.File('TR21_context_2_rb_20_localcm_small.h5')
     bam = fin['locus_observations']['chrM'].keys()[0]
     lo = fin['locus_observations']['chrM'][bam]['0']
+    lo = ((lo['f1'][:], lo['f2'][:]), (lo['r1'][:], lo['r2'][:]))
     cm = fin['covariate_matrices']['chrM'][bam]['0'][:]
 
     num_f = 100
@@ -507,7 +484,8 @@ if __name__ == '__main__':
     pf_params = (-3, 5, 6)
     params = np.concatenate((pf_params, init_params))
 
-    loglike, gradient = get_loglike_and_gradient(params, cm, lo, matrices, 3, freqs, windows, maj, mino)
+    major_cm, minor_cm, all_los = get_major_minor_cm_and_los(cm, lo, maj, mino)
+    loglike, gradient = get_loglike_and_gradient(params, major_cm, minor_cm, all_los, matrices, 3, freqs, windows, maj, mino)
     print('gradient.shape:', gradient.shape)
 
     eps = 1e-6
