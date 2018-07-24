@@ -90,9 +90,10 @@ def get_major_minor_cm_and_los(cm, lo, major, minor):
     major_cms = []
     minor_cms = []
     los = []
+    cur_lo_idx = 0
     for direc_idx in [0,1]:
         for rn_idx in [0,1]:
-            tlo = lo[direc_idx][rn_idx]
+            tlo = lo[direc_idx][rn_idx].copy()
             if 0 in tlo.shape:
                 continue
             tcm = cm[tlo[:,0]]
@@ -109,7 +110,9 @@ def get_major_minor_cm_and_los(cm, lo, major, minor):
             major_cms.append(major_cm)
             minor_cm = np.column_stack((minor_base_columns, readtwos[:,np.newaxis], tcm))
             minor_cms.append(minor_cm)
+            tlo[:,0] += cur_lo_idx   # first column indexes the entry in cm, so need to update this as we construct cm
             los.append(tlo)
+            cur_lo_idx += tlo.shape[0]
     major_cm = np.row_stack(major_cms)
     minor_cm = np.row_stack(minor_cms)
     all_los = np.row_stack(los)
