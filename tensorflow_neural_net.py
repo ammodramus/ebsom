@@ -13,6 +13,10 @@ import time
 
 import beta_with_spikes_integrated as bws
 
+from scipy.special import logsumexp
+import numexpr as ne
+
+
 
 
 def make_neural_net(n_input, hidden_layer_sizes):
@@ -75,7 +79,6 @@ def make_neural_net(n_input, hidden_layer_sizes):
     # Major
     hidden_layers = []
     # Assume there is at least one hidden layer...
-    #hidden_layers.append(tf.nn.softplus(tf.add(tf.matmul(major_cm, weights['hidden'][0]), biases['hidden'][0])))
     hidden_layers.append(tf.nn.softplus(tf.add(tf.matmul(major_inputs, weights['hidden'][0]), biases['hidden'][0])))
     # Calculate the remaining hidden layers
     for i in range(1, len(hidden_layer_sizes)):
@@ -112,10 +115,10 @@ def get_ll_from_nn(logprobs_major, logprobs_minor, logf, log1mf, lpf, counts):
     tmp = tf.stack((a_term, b_term))
     lse = tf.reduce_logsumexp(tf.stack((a_term, b_term)), axis = 0)
     tmp = tf.multiply(lse, counts)
-    tmp = tf.reduce_sum(tmp, axis = [1,2])
-    tmp = lpf + tmp
+    b_sums = tf.reduce_sum(tmp, axis = [1,2])
+    tmp = lpf + b_sums
     ll = tf.reduce_logsumexp(tmp)
-    return ll
+    return ll, b_sums
 
 
 def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f):
@@ -124,9 +127,9 @@ def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f):
     logpf = tf.placeholder(tf.float64, [num_f])
     log1mf = tf.placeholder(tf.float64, [num_f])
     counts = tf.placeholder(tf.float64, [None, 4])
-    ll = get_ll_from_nn(lpM, lpm, logf, log1mf,logpf, counts) 
+    ll, b_sums = get_ll_from_nn(lpM, lpm, logf, log1mf,logpf, counts) 
     grads = tf.gradients(ll, params)
-    return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads
+    return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums
 
 
 def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, ll_aux, sess):
@@ -138,11 +141,15 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
     ll_aux is all the variables that return from get_ll_tf
     num_pf_params, freqs, windows for lpf
     '''
+
     # Expand ll_aux
-    params_tf, major_inputs, minor_inputs, counts_tf, logf_tf, log1mf_tf, logpf_tf, ll_tf, grads_tf = ll_aux
+    params_tf, major_inputs, minor_inputs, counts_tf, logf_tf, log1mf_tf, logpf_tf, ll_tf, grads_tf, b_sums_tf = ll_aux
+
+    pf_pars = params[:num_pf_params]
+    nn_pars = params[num_pf_params:]
 
     # Get the AFD log-probability distribution
-    lpf_np = bws.get_lpf(params[:num_pf_params], freqs, windows)
+    lpf_np = bws.get_lpf(pf_pars, freqs, windows)
 
     if mino == 'N':
 
@@ -152,19 +159,20 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
         gradients = []
         lls = []
         for alt_minor in alt_minors:
-            major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm, lo, maj, alt_minor)
-            feed_dict = {
-                    params_tf:params[num_pf_params:],
-                    major_inputs:major_cm.astype(np.float64),
-                    minor_inputs:minor_cm.astype(np.float64),
-                    counts_tf: all_los[:,1:].astype(np.float64),
-                    logf_tf: logf,
-                    log1mf_tf: log1mf,
-                    logpf_tf: lpf_np
-                    }
-            tll, tgrad = sess.run([ll_tf, grads_tf], feed_dict=feed_dict)
+            # major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm, lo, maj, alt_minor)
+            # feed_dict = {
+            #         params_tf:nn_pars,
+            #         major_inputs:major_cm.astype(np.float64),
+            #         minor_inputs:minor_cm.astype(np.float64),
+            #         counts_tf: all_los[:,1:].astype(np.float64),
+            #         logf_tf: logf,
+            #         log1mf_tf: log1mf,
+            #         logpf_tf: lpf_np
+            #         }
+            # tll, tgrad = sess.run([ll_tf, grads_tf], feed_dict=feed_dict)
+            tll, tgrad = loglike_and_gradient_wrapper(params, cm, lo, maj, alt_minor, num_pf_params, logf, log1mf, freqs, windows, ll_aux, sess)
             lls.append(tll)
-            gradients.append(tgrad[0])
+            gradients.append(tgrad)
         lls = np.array(lls)
         gradients = np.array(gradients)
         sign_grads = np.sign(gradients)
@@ -174,12 +182,14 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
         neg_log_grads = (logabs_grads+lls[:,np.newaxis])
         pos_log_grads[sign_grads < 0] = -np.inf
         neg_log_grads[sign_grads >= 0] = -np.inf
-        nngrads = np.exp(logsumexp(pos_log_grads, axis = 0)-logdenom) - np.exp(logsumexp(neg_log_grads, axis = 0)-logdenom)
+        grads = np.exp(logsumexp(pos_log_grads, axis = 0)-logdenom) - np.exp(logsumexp(neg_log_grads, axis = 0)-logdenom)
         ll = logdenom - np.log(3.0)   # divided by 3 for average
+        return ll, grads
+
     else:
         major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm, lo, maj, mino)
         feed_dict = {
-                params_tf:params[num_pf_params:],
+                params_tf:nn_pars,
                 major_inputs:major_cm.astype(np.float64),
                 minor_inputs:minor_cm.astype(np.float64),
                 counts_tf: all_los[:,1:].astype(np.float64),
@@ -187,78 +197,49 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
                 log1mf_tf: log1mf,
                 logpf_tf: lpf_np
                 }
-        ll, nngrads = sess.run([ll_tf, grads_tf], feed_dict=feed_dict)
+        ll, nngrads, b_sums = sess.run([ll_tf, grads_tf, b_sums_tf], feed_dict=feed_dict)
         nngrads = nngrads[0]
-    grads = np.zeros_like(params)
-    grads[num_pf_params:] = nngrads
-    return ll, grads
+        grads = np.zeros_like(params)
+        grads[num_pf_params:] = nngrads
+
+        # Calculate gradient for pf_params
+        eps = 1e-7
+        pf = np.exp(lpf_np)
+        for i in range(num_pf_params):
+            pf_pars[i] += eps  # inc by eps
+            pf2 = np.exp(bws.get_lpf(pf_pars,freqs,windows))
+            pf_pars[i] -= eps  # fix the eps
+            dpfs = (pf2-pf)/eps
+            filt = dpfs >= 0
+            if np.any(filt):
+                # Probably not any faster to use numexpr here
+                # pos_log = logsumexp(np.log(dpfs[filt]) + b_sums[filt]) - ll
+                pos_log = logsumexp(np.log(np.abs(dpfs[filt])) + b_sums[filt]) - ll
+            else:
+                pos_log = -np.inf
+            if np.any(~filt):
+                neg_log = logsumexp(np.log(np.abs(dpfs[~filt])) + b_sums[~filt]) - ll
+            else:
+                neg_log = -np.inf
+            grads[i] = np.exp(pos_log) - np.exp(neg_log)
+
+        return ll, grads
 
 
-def main1():
-    # Import covariate data
-    #fin = h5py.File('TR21_context_2_rb_20_localcm_small.h5')
-    fin = h5py.File('sims_TR3_context_2_rb_20_localcm_more_heterplasmy.h5')
-    bam = fin['locus_observations']['chrM'].keys()[0]
-    lo = fin['locus_observations']['chrM'][bam]['100']
-    lo = ((lo['f1'][:], lo['f2'][:]), (lo['r1'][:], lo['r2'][:]))
-    cm = fin['covariate_matrices']['chrM'][bam]['100'][:]
-    maj, mino = 'G', 'T'
-    num_obs = cm.shape[0]
-    major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm,lo, maj, 'T')
-
-    num_inputs = major_cm.shape[1]
-
-    hidden_layer_sizes = [50,50]
-    num_f = 100
-
-    params_tf, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads = get_ll_and_grads_tf(num_obs,
-            num_inputs, hidden_layer_sizes, num_f)
-    total_num_params = int(params_tf.shape[0])
-    init = tf.global_variables_initializer()
-
-    ll_target = -1.0*ll
-    grads_target = tf.gradients(ll_target, params_tf)
-
-    par_vals = npr.normal(size = total_num_params, scale = 0.05)
-    freqs = bws.get_freqs(num_f)
-    windows = bws.get_window_boundaries(num_f)
-    lf = np.log(freqs)
-    l1mf = np.log(1-freqs)
-    pf_params = (-3, 5, 6)
-    lpf_v = bws.get_lpf(pf_params, freqs, windows)
-
-    with tf.Session() as sess:
-        start = time.time()
-        sess.run(init)
-        res = sess.run([ll_target, grads_target], feed_dict = {params_tf: par_vals, logf: lf,
-            log1mf: l1mf, logpf: lpf_v, counts: all_los[:,1:], major_inputs: major_cm,
-            minor_inputs: minor_cm})
-        dur = time.time() - start
-        ll1, grads = res
-        eps = 1e-5
-        which = 200
-        par_vals[which] += eps
-        ll2 = sess.run(ll_target, feed_dict = {params_tf: par_vals, logf: lf,
-            log1mf: l1mf, logpf: lpf_v, counts: all_los[:,1:].astype(np.float64),
-            major_inputs: major_cm.astype(np.float64), minor_inputs: minor_cm.astype(np.float64)})
-    n_grad = (ll2-ll1)/eps
-    grad = res[1][0][which]
-    print(n_grad, grad, dur)
-
-def main2():
+def main():
     # Import covariate data
     fin = h5py.File('sims_TR3_context_2_rb_20_localcm_more_heterplasmy.h5')
     bam = fin['locus_observations']['chrM'].keys()[0]
     lo = fin['locus_observations']['chrM'][bam]['100']
     lo = ((lo['f1'][:], lo['f2'][:]), (lo['r1'][:], lo['r2'][:]))
     cm = fin['covariate_matrices']['chrM'][bam]['100'][:]
-    maj, mino = 'G', 'T'
+    maj, mino = 'G', 'N'
     num_obs = cm.shape[0]
     major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm,lo, maj, 'T')
 
     num_inputs = major_cm.shape[1]
 
-    hidden_layer_sizes = [50,50]
+    hidden_layer_sizes = [50,50,50]
     num_f = 100
 
     # Get the 
@@ -276,19 +257,23 @@ def main2():
     lf = np.log(freqs)
     l1mf = np.log(1-freqs)
     pf_params = (-3, 5, 6)
-    par_vals = np.concatenate((pf_params, nn_par_vals))
+    num_pf_params = 3
+    par_vals = np.concatenate((pf_params, nn_par_vals)).astype(np.float64)
+
+    ll1, grads = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, ll_aux, sess)
+
+    which = 600
+    eps = 1e-7
+    par_vals[which] += eps
     start = time.time()
-    ll, grads = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, ll_aux, sess)
-    dur1 = time.time()-start
-    start = time.time()
-    par_vals[8] += 0.2
-    ll, grads = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, ll_aux, sess)
-    dur2 = time.time()-start
-    print('duration:', dur1, dur2)
-    import pdb; pdb.set_trace()
+    ll2, grads2 = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, ll_aux, sess)
+    dur = time.time() - start
+    ngrad = (ll2-ll1)/eps
+    print(ngrad, grads[which], 'duration:', dur)
+
     sess.close()
 
 
 if __name__ == '__main__':
-    main2()
+    main()
 
