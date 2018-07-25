@@ -191,7 +191,7 @@ v = 0
 t = 0
 
 post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
-W[-num_pf_params:] = post_init_pf_params[:]
+W[:num_pf_params] = post_init_pf_params[:]
 
 n_completed_reps = 0
 while True:
