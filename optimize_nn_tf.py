@@ -164,6 +164,7 @@ num_initial_training = 0
 initial_pf_params = np.array((-1,0.5,20))
 W[:num_pf_params] = initial_pf_params[:]
 t = 0
+done = False
 while num_initial_training < args.num_no_polymorphism_training_batches:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
@@ -184,7 +185,10 @@ while num_initial_training < args.num_no_polymorphism_training_batches:
             ttime = str(datetime.datetime.now()).replace(' ', '_')
             print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
             if num_initial_training >= args.num_no_polymorphism_training_batches:
+                done = True
                 break
+        if done:
+            break
 
 m = 0
 v = 0
