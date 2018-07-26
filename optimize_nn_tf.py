@@ -143,7 +143,7 @@ t = 0
 # these are the args in the call to grad_target, following batch
 remaining_args = [num_pf_params, lf, l1mf, freqs, windows, ll_aux, session]
 
-def grad_target(params, key, major, minor, num_pf_params, logf, log1mf, freqs, windows, ll_aux, session):
+def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_aux, session):
     loc_gradient_args = []
     lls = []
     grads = []
@@ -169,25 +169,21 @@ while num_initial_training < args.num_no_polymorphism_training_batches:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
-        for example in batch:
-            key, major, minor = example
-            t += 1
-            num_initial_training += 1
-            Wgrad = grad_target(W, key, major, minor, *remaining_args)
-            m = b1*m + (1-b1)*Wgrad
-            v = b2*v + (1-b2)*(Wgrad*Wgrad)
-            mhat = m/(1-b1**t)
-            vhat = v/(1-b2**t)
-            W += -alpha * mhat / (np.sqrt(vhat) + eps)
-            # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
-            #W[-num_pf_params:] = initial_pf_params[:]
-            W[:num_pf_params] = initial_pf_params[:]
-            ttime = str(datetime.datetime.now()).replace(' ', '_')
-            print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
-            if num_initial_training >= args.num_no_polymorphism_training_batches:
-                done = True
-                break
-        if done:
+        t += 1
+        num_initial_training += 1
+        Wgrad = grad_target(W, batch, *remaining_args)
+        m = b1*m + (1-b1)*Wgrad
+        v = b2*v + (1-b2)*(Wgrad*Wgrad)
+        mhat = m/(1-b1**t)
+        vhat = v/(1-b2**t)
+        W += -alpha * mhat / (np.sqrt(vhat) + eps)
+        # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
+        #W[-num_pf_params:] = initial_pf_params[:]
+        W[:num_pf_params] = initial_pf_params[:]
+        ttime = str(datetime.datetime.now()).replace(' ', '_')
+        print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
+        if num_initial_training >= args.num_no_polymorphism_training_batches:
+            done = True
             break
 
 m = 0
@@ -202,17 +198,15 @@ while True:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
-        for example in batch:
-            key, major, minor = example
-            t += 1
-            Wgrad = grad_target(W, key, major, minor, *remaining_args)
-            m = b1*m + (1-b1)*Wgrad
-            v = b2*v + (1-b2)*(Wgrad*Wgrad)
-            mhat = m/(1-b1**t)
-            vhat = v/(1-b2**t)
-            W += -alpha * mhat / (np.sqrt(vhat) + eps)
-            ttime = str(datetime.datetime.now()).replace(' ', '_')
-            print "\t".join([str(n_completed_reps), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+        t += 1
+        Wgrad = grad_target(W, batch, *remaining_args)
+        m = b1*m + (1-b1)*Wgrad
+        v = b2*v + (1-b2)*(Wgrad*Wgrad)
+        mhat = m/(1-b1**t)
+        vhat = v/(1-b2**t)
+        W += -alpha * mhat / (np.sqrt(vhat) + eps)
+        ttime = str(datetime.datetime.now()).replace(' ', '_')
+        print "\t".join([str(n_completed_reps), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
 
     n_completed_reps += 1
     if n_completed_reps >= args.num_reps:
