@@ -19,7 +19,7 @@ import numexpr as ne
 
 
 
-def make_neural_net(n_input, hidden_layer_sizes):
+def make_neural_net(n_input, hidden_layer_sizes, keep_prob_tf):
     if len(hidden_layer_sizes) < 1:
         raise ValueError('hidden_layer_sizes must contain at least one integer')
 
@@ -79,11 +79,21 @@ def make_neural_net(n_input, hidden_layer_sizes):
     # Major
     hidden_layers = []
     # Assume there is at least one hidden layer...
-    hidden_layers.append(tf.nn.softplus(tf.add(tf.matmul(major_inputs, weights['hidden'][0]), biases['hidden'][0])))
+    hidden_layers.append(
+            tf.nn.dropout(
+                tf.nn.softplus(
+                    tf.add(
+                        tf.matmul(major_inputs, weights['hidden'][0]),
+                        biases['hidden'][0]
+                        )
+                    ),
+                keep_prob_tf
+                )
+            )
     # Calculate the remaining hidden layers
     for i in range(1, len(hidden_layer_sizes)):
         prev_layer = hidden_layers[i-1]
-        layer = tf.nn.softplus(tf.add(tf.matmul(prev_layer, weights['hidden'][i]), biases['hidden'][i]))
+        layer = tf.nn.dropout(tf.nn.softplus(tf.add(tf.matmul(prev_layer, weights['hidden'][i]), biases['hidden'][i])), keep_prob_tf)
         hidden_layers.append(layer)
     out_layer = tf.matmul(hidden_layers[-1], weights['out']) + biases['out']
     logprobs_major = tf.nn.log_softmax(out_layer)
@@ -91,11 +101,11 @@ def make_neural_net(n_input, hidden_layer_sizes):
     # Minor
     hidden_layers = []
     # Assume there is at least one hidden layer...
-    hidden_layers.append(tf.nn.softplus(tf.add(tf.matmul(minor_inputs, weights['hidden'][0]), biases['hidden'][0])))
+    hidden_layers.append(tf.nn.dropout(tf.nn.softplus(tf.add(tf.matmul(minor_inputs, weights['hidden'][0]), biases['hidden'][0])), keep_prob_tf))
     # Calculate the remaining hidden layers
     for i in range(1, len(hidden_layer_sizes)):
         prev_layer = hidden_layers[i-1]
-        layer = tf.nn.softplus(tf.add(tf.matmul(prev_layer, weights['hidden'][i]), biases['hidden'][i]))
+        layer = tf.nn.dropout(tf.nn.softplus(tf.add(tf.matmul(prev_layer, weights['hidden'][i]), biases['hidden'][i])), keep_prob_tf)
         hidden_layers.append(layer)
     out_layer = tf.matmul(hidden_layers[-1], weights['out']) + biases['out']
     logprobs_minor = tf.nn.log_softmax(out_layer)
@@ -125,7 +135,8 @@ def get_ll_from_nn(logprobs_major, logprobs_minor, logf, log1mf, lpf, counts, re
 
 
 def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, return_f_posteriors = False):
-    params, major_inputs, minor_inputs, lpM, lpm = make_neural_net(n_input, hidden_layer_sizes)
+    keep_prob_tf = tf.placeholder(tf.float64, [])
+    params, major_inputs, minor_inputs, lpM, lpm = make_neural_net(n_input, hidden_layer_sizes, keep_prob_tf)
     logf = tf.placeholder(tf.float64, [num_f])
     logpf = tf.placeholder(tf.float64, [num_f])
     log1mf = tf.placeholder(tf.float64, [num_f])
@@ -137,13 +148,13 @@ def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, return_f_posteriors 
 
     grads = tf.gradients(ll, params)
     if not return_f_posteriors:
-        return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums
+        return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, keep_prob_tf
     else:
-        return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, f_posts
+        return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, keep_prob_tf, f_posts
 
 
 
-def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, ll_aux, sess):
+def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess):
     '''
     params are current parameter values
     cm is the localcm
@@ -154,7 +165,7 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
     '''
 
     # Expand ll_aux
-    params_tf, major_inputs, minor_inputs, counts_tf, logf_tf, log1mf_tf, logpf_tf, ll_tf, grads_tf, b_sums_tf = ll_aux
+    params_tf, major_inputs, minor_inputs, counts_tf, logf_tf, log1mf_tf, logpf_tf, ll_tf, grads_tf, b_sums_tf, keep_prob_tf = ll_aux
 
     pf_pars = params[:num_pf_params]
     nn_pars = params[num_pf_params:]
@@ -170,18 +181,7 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
         gradients = []
         lls = []
         for alt_minor in alt_minors:
-            # major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm, lo, maj, alt_minor)
-            # feed_dict = {
-            #         params_tf:nn_pars,
-            #         major_inputs:major_cm.astype(np.float64),
-            #         minor_inputs:minor_cm.astype(np.float64),
-            #         counts_tf: all_los[:,1:].astype(np.float64),
-            #         logf_tf: logf,
-            #         log1mf_tf: log1mf,
-            #         logpf_tf: lpf_np
-            #         }
-            # tll, tgrad = sess.run([ll_tf, grads_tf], feed_dict=feed_dict)
-            tll, tgrad = loglike_and_gradient_wrapper(params, cm, lo, maj, alt_minor, num_pf_params, logf, log1mf, freqs, windows, ll_aux, sess)
+            tll, tgrad = loglike_and_gradient_wrapper(params, cm, lo, maj, alt_minor, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess)
             lls.append(tll)
             gradients.append(tgrad)
         lls = np.array(lls)
@@ -206,7 +206,8 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
                 counts_tf: all_los[:,1:].astype(np.float64),
                 logf_tf: logf,
                 log1mf_tf: log1mf,
-                logpf_tf: lpf_np
+                logpf_tf: lpf_np,
+                keep_prob_tf: keep_prob
                 }
         ll, nngrads, b_sums = sess.run([ll_tf, grads_tf, b_sums_tf], feed_dict=feed_dict)
         nngrads = nngrads[0]
@@ -250,19 +251,20 @@ def main():
 
     num_inputs = major_cm.shape[1]
 
-    hidden_layer_sizes = [50,50,50]
+    hidden_layer_sizes = [50,50]
     num_f = 100
 
-    # Get the 
+    keep_prob = 0.7
+
+    # Get the auxiliary tf variables for input and output
+    tf.set_random_seed(0)
     ll_aux = get_ll_and_grads_tf(num_inputs, hidden_layer_sizes, num_f)
+    init = tf.global_variables_initializer()
 
     total_num_params = int(ll_aux[0].shape[0])
-    init = tf.global_variables_initializer()
-    sess = tf.Session()
-    sess.run(init)
 
     # Get the initial values
-    nn_par_vals = npr.normal(size = total_num_params, scale = 0.05)
+    nn_par_vals = npr.normal(size = total_num_params, scale = np.sqrt(2.0/num_inputs))
     freqs = bws.get_freqs(num_f)
     windows = bws.get_window_boundaries(num_f)
     lf = np.log(freqs)
@@ -271,13 +273,19 @@ def main():
     num_pf_params = 3
     par_vals = np.concatenate((pf_params, nn_par_vals)).astype(np.float64)
 
-    ll1, grads = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, ll_aux, sess)
+    sess = tf.Session()
+    sess.run(init)
+    ll1, grads = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, keep_prob, ll_aux, sess)
+    sess.close()
 
     which = 600
     eps = 1e-7
     par_vals[which] += eps
     start = time.time()
-    ll2, grads2 = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, ll_aux, sess)
+
+    sess2 = tf.Session()
+    ll2, grads2 = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, keep_prob, ll_aux, sess2)
+    sess2.close()
     dur = time.time() - start
     ngrad = (ll2-ll1)/eps
     print(ngrad, grads[which], 'duration:', dur)

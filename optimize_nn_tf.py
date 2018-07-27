@@ -65,6 +65,7 @@ parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, 
         help = 'number of loci to consider before allowing polymoprhism')
 parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [50],
         help = 'hidden layer sizes, space-delimited')
+parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = 'dropout keep probability for training')
 args = parser.parse_args()
 
 
@@ -173,7 +174,7 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
         lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
         num_obs = cm.shape[0]
         ll, grad = tfnn.loglike_and_gradient_wrapper(params, cm, lo, major,
-                minor, num_pf_params, logf, log1mf, freqs, windows, ll_aux,
+                minor, num_pf_params, logf, log1mf, freqs, windows, args.dropout_keep_prob, ll_aux,
                 session)
         lls.append(ll)
         grads.append(grad)
