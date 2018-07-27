@@ -1,15 +1,7 @@
-import os
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
-import scipy.optimize as opt
 import h5py
 import numpy as np
 import numpy.random as npr
-import afd
-import gradient
-import cygradient
-import cylikelihood
 import beta_with_spikes_integrated as bws
-import util
 import sys
 import argparse
 import datetime
@@ -19,6 +11,33 @@ import neural_net as nn
 
 import tensorflow_neural_net as tfnn
 import tensorflow as tf
+
+
+def get_args(locus_keys, mm):
+    # args will be key, major, minor
+    args = []
+    for key in locus_keys:
+        chrom, bam, locus = key.split('/')
+        locus = int(locus)
+        major, minor = mm[chrom][bam][locus]
+        if major == 'N':
+            continue
+        args.append([key, major, minor])
+    return args
+
+def get_major_minor(h5in):
+    mm = {}
+    for chrom in h5in['major_minor'].keys():
+        h5_chrom_mm = h5in['major_minor'][chrom]
+        mm[chrom] = {}
+        for bam in h5_chrom_mm.keys():
+            h5_bam_mm = h5_chrom_mm[bam]
+            t_h5_bam_mm = h5_bam_mm[:,:].copy()
+            mm[chrom][bam] = t_h5_bam_mm
+    return mm
+
+
+
 
 print '#' + ' '.join(sys.argv)
 
@@ -51,7 +70,7 @@ args = parser.parse_args()
 
 dat = h5py.File(args.input, 'r')
 print '# loading all_majorminor'
-all_majorminor = h5py_util.get_major_minor(dat)
+all_majorminor = get_major_minor(dat)
 print '# obtaining column names'
 colnames_str = dat.attrs['covariate_column_names']
 colnames = colnames_str.split(',')
@@ -126,7 +145,8 @@ init = tf.global_variables_initializer()
 session = tf.Session()
 session.run(init)
 
-arglist = gradient.get_args(good_keys, all_majorminor)  # each element is (key, major, minor)
+
+arglist = get_args(good_keys, all_majorminor)  # each element is (key, major, minor)
 
 num_args = len(arglist)
 split_at = np.arange(0, num_args, args.batch_size)[1:]
