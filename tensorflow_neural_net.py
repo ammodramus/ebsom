@@ -103,7 +103,7 @@ def make_neural_net(n_input, hidden_layer_sizes):
     return params, major_inputs, minor_inputs, logprobs_major, logprobs_minor
 
 
-def get_ll_from_nn(logprobs_major, logprobs_minor, logf, log1mf, lpf, counts):
+def get_ll_from_nn(logprobs_major, logprobs_minor, logf, log1mf, lpf, counts, return_f_posteriors = False):
     a_term = tf.add(
             tf.expand_dims(tf.expand_dims(logf, axis = -1), axis = -1),
             tf.expand_dims(logprobs_minor, axis = 0)
@@ -116,20 +116,31 @@ def get_ll_from_nn(logprobs_major, logprobs_minor, logf, log1mf, lpf, counts):
     lse = tf.reduce_logsumexp(tf.stack((a_term, b_term)), axis = 0)
     tmp = tf.multiply(lse, counts)
     b_sums = tf.reduce_sum(tmp, axis = [1,2])
-    tmp = lpf + b_sums
-    ll = tf.reduce_logsumexp(tmp)
-    return ll, b_sums
+    f_posts = lpf + b_sums
+    ll = tf.reduce_logsumexp(f_posts)
+    if not return_f_posteriors:
+        return ll, b_sums
+    else:
+        return ll, b_sums, f_posts
 
 
-def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f):
+def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, return_f_posteriors = False):
     params, major_inputs, minor_inputs, lpM, lpm = make_neural_net(n_input, hidden_layer_sizes)
     logf = tf.placeholder(tf.float64, [num_f])
     logpf = tf.placeholder(tf.float64, [num_f])
     log1mf = tf.placeholder(tf.float64, [num_f])
     counts = tf.placeholder(tf.float64, [None, 4])
-    ll, b_sums = get_ll_from_nn(lpM, lpm, logf, log1mf,logpf, counts) 
+    if return_f_posteriors:
+        ll, b_sums, f_posts = get_ll_from_nn(lpM, lpm, logf, log1mf,logpf, counts, return_f_posteriors = True) 
+    else:
+        ll, b_sums = get_ll_from_nn(lpM, lpm, logf, log1mf,logpf, counts, return_f_posteriors = False) 
+
     grads = tf.gradients(ll, params)
-    return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums
+    if not return_f_posteriors:
+        return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums
+    else:
+        return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, f_posts
+
 
 
 def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, ll_aux, sess):
