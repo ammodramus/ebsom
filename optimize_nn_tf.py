@@ -178,7 +178,7 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
                 session)
         lls.append(ll)
         grads.append(grad)
-    grad = np.sum(grads, axis = 0)
+    grad = np.mean(grads, axis = 0)
     return -1.0*grad
 
 num_initial_training = 0
