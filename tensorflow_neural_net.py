@@ -134,7 +134,7 @@ def get_ll_from_nn(logprobs_major, logprobs_minor, logf, log1mf, lpf, counts, re
         return ll, b_sums, f_posts
 
 
-def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, dropout, return_f_posteriors = False):
+def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, return_f_posteriors = False):
     keep_prob_tf = tf.placeholder(tf.float64, [])
     params, major_inputs, minor_inputs, lpM, lpm = make_neural_net(n_input, hidden_layer_sizes, keep_prob_tf)
     logf = tf.placeholder(tf.float64, [num_f])
@@ -154,7 +154,7 @@ def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, dropout, return_f_po
 
 
 
-def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, dropout, ll_aux, sess):
+def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess):
     '''
     params are current parameter values
     cm is the localcm
@@ -181,7 +181,7 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
         gradients = []
         lls = []
         for alt_minor in alt_minors:
-            tll, tgrad = loglike_and_gradient_wrapper(params, cm, lo, maj, alt_minor, num_pf_params, logf, log1mf, freqs, windows, dropout, ll_aux, sess)
+            tll, tgrad = loglike_and_gradient_wrapper(params, cm, lo, maj, alt_minor, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess)
             lls.append(tll)
             gradients.append(tgrad)
         lls = np.array(lls)
@@ -207,7 +207,7 @@ def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf,
                 logf_tf: logf,
                 log1mf_tf: log1mf,
                 logpf_tf: lpf_np,
-                keep_prob_tf: dropout
+                keep_prob_tf: keep_prob
                 }
         ll, nngrads, b_sums = sess.run([ll_tf, grads_tf, b_sums_tf], feed_dict=feed_dict)
         nngrads = nngrads[0]
@@ -258,7 +258,7 @@ def main():
 
     # Get the auxiliary tf variables for input and output
     tf.set_random_seed(0)
-    ll_aux = get_ll_and_grads_tf(num_inputs, hidden_layer_sizes, num_f, keep_prob)
+    ll_aux = get_ll_and_grads_tf(num_inputs, hidden_layer_sizes, num_f)
     init = tf.global_variables_initializer()
 
     total_num_params = int(ll_aux[0].shape[0])
