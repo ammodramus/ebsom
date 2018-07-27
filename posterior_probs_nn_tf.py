@@ -72,7 +72,7 @@ lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
 num_inputs = nn.get_major_minor_cm_and_los(cm,lo, 'C', 'T')[0].shape[1]
 
 logprobs_aux = tfnn.get_ll_and_grads_tf(num_inputs, args.hiddenlayersizes, num_f, return_f_posteriors = True)
-params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, f_posts = logprobs_aux
+params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, keep_prob_tf, f_posts = logprobs_aux
 total_num_params = int(params.shape[0])
 init = tf.global_variables_initializer()
 session = tf.Session()
@@ -99,7 +99,7 @@ for chrom in h5lo.keys():
             if minor != 'N':
                 major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm,lo, major, minor)
                 feed_dict = {params: nn_pars, major_inputs:major_cm, minor_inputs:minor_cm,
-                        logf:lf, log1mf:l1mf, logpf:lpf, counts:all_los[:,1:]}
+                        logf:lf, log1mf:l1mf, logpf:lpf, counts:all_los[:,1:], keep_prob_tf:1.0}
                 logpost_fs = session.run(f_posts, feed_dict = feed_dict)
             else:
                 minor_cms = []
@@ -110,7 +110,7 @@ for chrom in h5lo.keys():
                 lpostfs = []
                 for mcm in minor_cms:
                     feed_dict = {params: nn_pars, major_inputs:major_cm, minor_inputs:mcm,
-                            logf:lf, log1mf:l1mf, logpf:lpf, counts:all_los[:,1:]}
+                            logf:lf, log1mf:l1mf, logpf:lpf, counts:all_los[:,1:], keep_prob_tf:1.0}
                     m_logpost_fs = session.run(f_posts, feed_dict = feed_dict)
                     lpostfs.append(m_logpost_fs)
                 logpost_fs = logsumexp(lpostfs, axis = 0)
