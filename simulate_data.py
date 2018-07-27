@@ -16,6 +16,7 @@ parser.add_argument('parameters', help = 'file of parameters, one per line')
 parser.add_argument('output', help = 'output HDF5 filename')
 parser.add_argument('--num-pf-parameters', type = int, default = 3)
 parser.add_argument('--num-frequencies', type = int, default = 100)
+parser.add_argument('--frequency-output', help = 'file for simulated allele frequencies')
 # parser.add_argument('--resample-covariates')
 args = parser.parse_args()
 
@@ -75,6 +76,9 @@ l1mf = np.log(1-freqs)
 logpf = bws.get_lpf(pf_params, freqs, windows)
 pf = np.exp(logpf)
 
+if args.frequency_output:
+    freq_out = open(args.frequency_output, 'w')
+
 with h5py.File(args.output, 'w') as fout:
     fout_lo = fout.create_group('locus_observations')
     for key_idx, key in enumerate(locus_keys):
@@ -106,6 +110,9 @@ with h5py.File(args.output, 'w') as fout:
         # draw random frequency from allele frequency distribution
 
         freq = npr.choice(freqs, size = 1, p = pf)
+
+        if args.frequency_output:
+            freq_out.write('\t'.join(key.split('/') + [str(freq)]))
         
         major_logprob_key_by_direc = {'f1': (major, 1), 'f2': (major, 2),
                 'r1': (rmajor, 1), 'r2': (rmajor, 2)}
