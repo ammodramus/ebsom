@@ -254,15 +254,14 @@ def main():
     hidden_layer_sizes = [50,50]
     num_f = 100
 
-    keep_prob = 0.9
+    keep_prob = 0.7
 
     # Get the auxiliary tf variables for input and output
+    tf.set_random_seed(0)
     ll_aux = get_ll_and_grads_tf(num_inputs, hidden_layer_sizes, num_f, keep_prob)
+    init = tf.global_variables_initializer()
 
     total_num_params = int(ll_aux[0].shape[0])
-    init = tf.global_variables_initializer()
-    sess = tf.Session()
-    sess.run(init)
 
     # Get the initial values
     nn_par_vals = npr.normal(size = total_num_params, scale = np.sqrt(2.0/num_inputs))
@@ -274,15 +273,19 @@ def main():
     num_pf_params = 3
     par_vals = np.concatenate((pf_params, nn_par_vals)).astype(np.float64)
 
-    tf.set_random_seed(0)
+    sess = tf.Session()
+    sess.run(init)
     ll1, grads = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, keep_prob, ll_aux, sess)
+    sess.close()
 
     which = 600
     eps = 1e-7
     par_vals[which] += eps
     start = time.time()
-    tf.set_random_seed(0)
-    ll2, grads2 = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, keep_prob, ll_aux, sess)
+
+    sess2 = tf.Session()
+    ll2, grads2 = loglike_and_gradient_wrapper(par_vals, cm, lo, maj, mino, 3, lf, l1mf, freqs, windows, keep_prob, ll_aux, sess2)
+    sess2.close()
     dur = time.time() - start
     ngrad = (ll2-ll1)/eps
     print(ngrad, grads[which], 'duration:', dur)
