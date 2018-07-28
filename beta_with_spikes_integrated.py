@@ -7,17 +7,11 @@ def logistic(x):
 def Dlogistic(x):
     return np.exp(x)/((1+np.exp(x))**2.0)
 
+'''
 def get_psmc_times(n, tmax):
     t = 0.1*(np.exp(
         np.arange(1,n+1, dtype = np.float)/n * np.log(1 + 10*tmax))-1)
     return t
-
-def get_freqs(num_f):
-    f = np.zeros(num_f)
-    f[0] = 0.0
-    f[1:] = get_psmc_times(num_f-1,0.5)
-    f = f[:-1]  # frequency = 0.5 causes numerical problems: log(0) == -inf
-    return f
 
 def get_window_boundaries(num_f):
     f = np.zeros(num_f)
@@ -29,6 +23,25 @@ def get_freqs(num_f):
     v = get_window_boundaries(num_f)
     f = np.concatenate(((0,), (v[:-1]+v[1:])/2.0))
     return f
+'''
+
+def get_psmc_times(n, tmax, conc_factor = 10):
+    t = 1.0/conc_factor*(np.exp(
+        np.arange(1,n+1, dtype = np.float)/n * np.log(1 + conc_factor*tmax))-1)
+    return t
+
+def get_window_boundaries(num_f, conc_factor = 10):
+    f = np.zeros(num_f)
+    f[0] = 0.0
+    f[1:] = get_psmc_times(num_f-1,0.5, conc_factor)
+    return f
+
+def get_freqs(num_f, conc_factor = 10):
+    v = get_window_boundaries(num_f, conc_factor)
+    f = np.concatenate(((0,), (v[:-1]+v[1:])/2.0))
+    return f
+
+
 
 def get_lpf(params, x, window_boundaries = None):
     '''
