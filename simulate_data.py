@@ -115,7 +115,7 @@ with h5py.File(args.output, 'w') as fout:
         freq = npr.choice(freqs, p = pf)
 
         if args.frequency_output:
-            freq_out.write('\t'.join(key.split('/') + [str(freq)]))
+            freq_out.write('\t'.join(key.split('/') + [str(freq)]) + '\n')
         
         major_logprob_key_by_direc = {'f1': (major, 1), 'f2': (major, 2),
                 'r1': (rmajor, 1), 'r2': (rmajor, 2)}
