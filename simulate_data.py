@@ -16,8 +16,10 @@ parser.add_argument('parameters', help = 'file of parameters, one per line')
 parser.add_argument('output', help = 'output HDF5 filename')
 parser.add_argument('--num-pf-parameters', type = int, default = 3)
 parser.add_argument('--num-frequencies', type = int, default = 100)
+parser.add_argument('--concentration-factor', type = float, default = 10.0,
+        help = 'concentration factor for simulated frequencies. 10 for original \
+                PSMC, higher concentrates frequencies closer to 0')
 parser.add_argument('--frequency-output', help = 'file for simulated allele frequencies')
-# parser.add_argument('--resample-covariates')
 args = parser.parse_args()
 
 fin = h5py.File(args.template)
@@ -69,8 +71,9 @@ nbetas = len(regkeys)*3*rowlen
 pf_params = params[-args.num_pf_parameters:]
 
 num_f = args.num_frequencies
-freqs = bws.get_freqs(num_f)
-windows = bws.get_window_boundaries(num_f)
+conc_factor = args.concentration_factor
+freqs = bws.get_freqs(num_f, concentration_factor)
+windows = bws.get_window_boundaries(num_f, concentration_factor)
 lf = np.log(freqs)
 l1mf = np.log(1-freqs)
 logpf = bws.get_lpf(pf_params, freqs, windows)
@@ -109,7 +112,7 @@ with h5py.File(args.output, 'w') as fout:
 
         # draw random frequency from allele frequency distribution
 
-        freq = npr.choice(freqs, size = 1, p = pf)
+        freq = npr.choice(freqs, p = pf)
 
         if args.frequency_output:
             freq_out.write('\t'.join(key.split('/') + [str(freq)]))
