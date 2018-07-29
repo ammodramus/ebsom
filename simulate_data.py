@@ -72,8 +72,8 @@ pf_params = params[-args.num_pf_parameters:]
 
 num_f = args.num_frequencies
 conc_factor = args.concentration_factor
-freqs = bws.get_freqs(num_f, concentration_factor)
-windows = bws.get_window_boundaries(num_f, concentration_factor)
+freqs = bws.get_freqs(num_f, conc_factor)
+windows = bws.get_window_boundaries(num_f, conc_factor)
 lf = np.log(freqs)
 l1mf = np.log(1-freqs)
 logpf = bws.get_lpf(pf_params, freqs, windows)

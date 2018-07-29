@@ -291,7 +291,7 @@ def loc_post_fs(
         #double [:,::1] lpA
         #double [:,::1] lpa
         np.ndarray[ndim=1,dtype=np.double_t] logaf
-        int [:,::1] lo
+        long [:,::1] lo
 
     logaf = np.zeros(lpf.shape[0])
 
@@ -314,6 +314,8 @@ def loc_post_fs(
 
     # calculate the logaf's
     for i in range(len(los)):
+        if 0 in los[i].shape:
+            continue
         lo = los[i]
         lpA = lpAs[i]
         lpa = lpas[i]
@@ -338,7 +340,6 @@ def loc_post_fs(
                     logaf[fidx] += count*c4
 
     return logaf
-
 
 def loc_pos_fs_Nminor(params, cm, logprobs, locobs, major,
         minor, blims, lpf, lf, l1mf):
