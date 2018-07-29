@@ -61,8 +61,8 @@ parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, 
 parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [50],
         help = 'hidden layer sizes, space-delimited')
 parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = 'dropout keep probability for training')
-parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model')
-parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing')
+parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model', type = int)
+parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
 args = parser.parse_args()
 
 num_f = args.num_frequencies
