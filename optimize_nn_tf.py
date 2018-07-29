@@ -41,11 +41,6 @@ def get_major_minor(h5in):
 
 print '#' + ' '.join(sys.argv)
 
-num_f = 100
-freqs = bws.get_freqs(num_f)
-windows = bws.get_window_boundaries(num_f)
-lf = np.log(freqs)
-l1mf = np.log(1-freqs)
 
 parser = argparse.ArgumentParser(
         description='optimize neural-net-based model of heteroplasmy \
@@ -66,7 +61,16 @@ parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, 
 parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [50],
         help = 'hidden layer sizes, space-delimited')
 parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = 'dropout keep probability for training')
+parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model')
+parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing')
 args = parser.parse_args()
+
+num_f = args.num_frequencies
+conc_factor = args.concentration_factor
+freqs = bws.get_freqs(num_f, conc_factor)
+windows = bws.get_window_boundaries(num_f, conc_factor)
+lf = np.log(freqs)
+l1mf = np.log(1-freqs)
 
 
 dat = h5py.File(args.input, 'r')
