@@ -53,8 +53,12 @@ parser.add_argument('--init-params',
 parser.add_argument('--mpi', action = 'store_true')
 parser.add_argument('--num-processes', type = int, default = 1)
 parser.add_argument('--num-reps', type = int, default = 100)
-parser.add_argument('--batch-size', type = int, default = 20)
-parser.add_argument('--alpha', type = float, default = 0.01)
+parser.add_argument('--batch-size', type = int, default = 16)
+parser.add_argument('--init-batch-size', type = int)
+parser.add_argument('--distribution-alpha', help = 'learning rate for distribution parameters only', type = float)
+parser.add_argument('--alpha', type = float, default = 0.01, help = 'learning rate after polymorphism is introduced')
+parser.add_argument('--init-alpha', type = float, help = 'learning rate for first stage of optimization, without heteroplasmy')
+parser.add_argument('--time-with-polymorphism', type = int, default = 0, help = 'value of t in ADAM algorithm after introducing polymorphism. higher means slower learning in this phase')
 parser.add_argument('--restart', help = 'parameters, one per line, at which to restart optimization')
 parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, default = 0,
         help = 'number of loci to consider before allowing polymoprhism')
@@ -154,9 +158,9 @@ session.run(init)
 arglist = get_args(good_keys, all_majorminor)  # each element is (key, major, minor)
 
 num_args = len(arglist)
-split_at = np.arange(0, num_args, args.batch_size)[1:]
+bs = args.init_batch_size if args.init_batch_size is not None else args.batch_size
+split_at = np.arange(0, num_args, bs)[1:]
 
-alpha = args.alpha
 b1 = 0.9
 b2 = 0.999
 eps = 1e-8
@@ -164,6 +168,10 @@ W = pars.copy()
 m = 0
 v = 0
 t = 0
+
+alpha = np.ones_like(W)*args.alpha
+if args.distribution_alpha:
+    alpha[:num_pf_params] = args.distribution_alpha
 
 # these are the args in the call to grad_target, following batch
 remaining_args = [num_pf_params, lf, l1mf, freqs, windows, ll_aux, session]
@@ -211,9 +219,11 @@ while num_initial_training < args.num_no_polymorphism_training_batches:
             done = True
             break
 
+split_at = np.arange(0, num_args, args.batch_size)[1:]
+
 m = 0
 v = 0
-t = 0
+t = args.time_with_polymorphism
 
 post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
 W[:num_pf_params] = post_init_pf_params[:]
