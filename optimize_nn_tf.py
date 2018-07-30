@@ -59,7 +59,6 @@ parser.add_argument('--distribution-alpha', help = 'learning rate for distributi
 parser.add_argument('--alpha', type = float, default = 0.01, help = 'learning rate after polymorphism is introduced')
 parser.add_argument('--init-alpha', type = float, help = 'learning rate for first stage of optimization, without heteroplasmy')
 parser.add_argument('--time-with-polymorphism', type = int, default = 0, help = 'value of t in ADAM algorithm after introducing polymorphism. higher means slower learning in this phase')
-parser.add_argument('--restart', help = 'parameters, one per line, at which to restart optimization')
 parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, default = 0,
         help = 'number of loci to consider before allowing polymoprhism')
 parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [50],
