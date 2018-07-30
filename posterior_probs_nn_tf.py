@@ -27,11 +27,13 @@ parser = argparse.ArgumentParser(
 parser.add_argument('input', help = 'input HDF5 data file')
 parser.add_argument('params', help = 'file with parameters, one per line, allele-frequency distribution parameters first')
 parser.add_argument('hiddenlayersizes', type = int, nargs = '+', help = 'sizes of hidden layers')
+parser.add_argument('--num-freqs', type = int, default = 100)
+parser.add_argument('--concentration-factor', type = float, default = 10.0)
 args = parser.parse_args()
 
 
 num_pf_params = 3
-num_f = 100
+num_f = args.num_freqs
 
 
 
@@ -39,8 +41,8 @@ pars = np.loadtxt(args.params)
 pf_pars = pars[:num_pf_params]
 nn_pars = pars[num_pf_params:]
 
-freqs = bws.get_freqs(num_f)
-windows = bws.get_window_boundaries(num_f)
+freqs = bws.get_freqs(num_f, args.concentration_factor)
+windows = bws.get_window_boundaries(num_f, args.concentration_factor)
 lf = np.log(freqs)
 l1mf = np.log(1-freqs)
 lpf = bws.get_lpf(pf_pars, freqs, windows)
