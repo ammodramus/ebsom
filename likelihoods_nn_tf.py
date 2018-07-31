@@ -142,7 +142,7 @@ def lls_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_au
         lo = h5lo[key]
         lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
         num_obs = cm.shape[0]
-        ll, grad = tfnn.loglike_and_gradient_wrapper(params, cm, lo, major,
+        ll = tfnn.loglike_wrapper(params, cm, lo, major,
                 minor, num_pf_params, logf, log1mf, freqs, windows, 1.0, ll_aux,
                 session)
         lls.append(ll)

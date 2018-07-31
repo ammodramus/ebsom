@@ -153,6 +153,55 @@ def get_ll_and_grads_tf(n_input, hidden_layer_sizes, num_f, return_f_posteriors 
         return params, major_inputs, minor_inputs, counts, logf, log1mf, logpf, ll, grads, b_sums, keep_prob_tf, f_posts
 
 
+def loglike_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess):
+    '''
+    params are current parameter values
+    cm is the localcm
+    lo is tuple of tuple of direction-locobs
+    maj, mino are major and minor bases
+    ll_aux is all the variables that return from get_ll_tf
+    num_pf_params, freqs, windows for lpf
+    '''
+
+    # Expand ll_aux
+    params_tf, major_inputs, minor_inputs, counts_tf, logf_tf, log1mf_tf, logpf_tf, ll_tf, grads_tf, b_sums_tf, keep_prob_tf = ll_aux
+
+    pf_pars = params[:num_pf_params]
+    nn_pars = params[num_pf_params:]
+
+    # Get the AFD log-probability distribution
+    lpf_np = bws.get_lpf(pf_pars, freqs, windows)
+
+    if mino == 'N':
+
+        # Have to average the likelihood over all the potential minor alleles
+        alt_minors = [base for base in 'ACGT' if base != maj]
+
+        lls = []
+        for alt_minor in alt_minors:
+            tll, tgrad = loglike_and_gradient_wrapper(params, cm, lo, maj, alt_minor, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess)
+            lls.append(tll)
+        lls = np.array(lls)
+        logdenom = logsumexp(lls)
+        ll = logdenom - np.log(3.0)   # divided by 3 for average
+        return ll
+
+    else:
+        major_cm, minor_cm, all_los = nn.get_major_minor_cm_and_los(cm, lo, maj, mino)
+        feed_dict = {
+                params_tf:nn_pars,
+                major_inputs:major_cm.astype(np.float64),
+                minor_inputs:minor_cm.astype(np.float64),
+                counts_tf: all_los[:,1:].astype(np.float64),
+                logf_tf: logf,
+                log1mf_tf: log1mf,
+                logpf_tf: lpf_np,
+                keep_prob_tf: keep_prob
+                }
+        ll = sess.run(ll_tf, feed_dict=feed_dict)
+
+        return ll
+
 
 def loglike_and_gradient_wrapper(params, cm, lo, maj, mino, num_pf_params, logf, log1mf, freqs, windows, keep_prob, ll_aux, sess):
     '''
