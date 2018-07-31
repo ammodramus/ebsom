@@ -1,3 +1,4 @@
+from __future__ import division
 import h5py
 import numpy as np
 import numpy.random as npr
@@ -173,36 +174,49 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
     loc_gradient_args = []
     lls = []
     grads = []
+    total_count = 0
     for key, major, minor in batch:
         cm = h5cm[key][:]
         lo = h5lo[key]
         lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
+        #total_count += lo[0][0][:,1:].sum() + lo[0][1][:,1:].sum() + lo[1][0][:,1:].sum() + lo[1][1][:,1:].sum()
+        for i in range(2):
+            for j in range(2):
+                if 0 in lo[i][j].shape:
+                    continue
+                total_count += lo[i][j][:,1:].sum()
         num_obs = cm.shape[0]
         ll, grad = tfnn.loglike_and_gradient_wrapper(params, cm, lo, major,
                 minor, num_pf_params, logf, log1mf, freqs, windows, args.dropout_keep_prob, ll_aux,
                 session)
         lls.append(ll)
         grads.append(grad)
-    grad = np.mean(grads, axis = 0)
+    # Divide grad also by total number of loci, since each locus can contain an
+    # enormous amount of data. Without doing this, huge steps based on a single
+    # batch. Divide by 1000.0 because most loci will not count much in the
+    # likelihood once the error model is learned. Also because it seems to
+    # improve things.
+    grad = np.mean(grads, axis = 0)/(total_count / len(batch) / 1000.0)
     return -1.0*grad
 
-num_initial_training = 0
-initial_pf_params = np.array((-1,0.5,20))
-W[:num_pf_params] = initial_pf_params[:]
-while num_initial_training < args.num_no_polymorphism_training_batches:
-    permuted_args = npr.permutation(arglist)
-    batches = np.array_split(permuted_args, split_at)
-    for j, batch in enumerate(batches):
-        num_initial_training += 1
-        Wgrad = grad_target(W, batch, *remaining_args)
-        W += -alpha * Wgrad
-        # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
-        #W[-num_pf_params:] = initial_pf_params[:]
-        W[:num_pf_params] = initial_pf_params[:]
-        ttime = str(datetime.datetime.now()).replace(' ', '_')
-        print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
-        if num_initial_training >= args.num_no_polymorphism_training_batches:
-            break
+if not args.init_params:
+    num_initial_training = 0
+    initial_pf_params = np.array((-1,0.5,20))
+    W[:num_pf_params] = initial_pf_params[:]
+    while num_initial_training < args.num_no_polymorphism_training_batches:
+        permuted_args = npr.permutation(arglist)
+        batches = np.array_split(permuted_args, split_at)
+        for j, batch in enumerate(batches):
+            num_initial_training += 1
+            Wgrad = grad_target(W, batch, *remaining_args)
+            W += -alpha * Wgrad
+            # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
+            #W[-num_pf_params:] = initial_pf_params[:]
+            W[:num_pf_params] = initial_pf_params[:]
+            ttime = str(datetime.datetime.now()).replace(' ', '_')
+            print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
+            if num_initial_training >= args.num_no_polymorphism_training_batches:
+                break
 
 split_at = np.arange(0, num_args, args.batch_size)[1:]
 
@@ -210,16 +224,17 @@ post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of
 if not args.init_params:
     W[:num_pf_params] = post_init_pf_params[:]
 
-n_completed_reps = 0
+n_completed_epochs = 0
 while True:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
         Wgrad = grad_target(W, batch, *remaining_args)
+        print '# grad:' + '\t'.join(['{:.4e}'.format(el) for el in Wgrad])
         W += -alpha * Wgrad
         ttime = str(datetime.datetime.now()).replace(' ', '_')
-        print "\t".join([str(n_completed_reps), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+        print "\t".join([str(n_completed_epochs), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
 
-    n_completed_reps += 1
-    if n_completed_reps >= args.num_epochs:
+    n_completed_epochs += 1
+    if n_completed_epochs >= args.num_epochs:
         break

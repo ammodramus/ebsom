@@ -149,7 +149,7 @@ session.run(init)
 arglist = get_args(good_keys, all_majorminor)  # each element is (key, major, minor)
 
 num_args = len(arglist)
-bs = args.init_batch_size if args.init_batch_size is not None else args.batch_size
+bs = args.batch_size
 W = pars.copy()
 
 alpha = np.ones_like(W)*args.alpha
