@@ -215,7 +215,6 @@ while True:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
-        t += 1
         Wgrad = grad_target(W, batch, *remaining_args)
         W += -alpha * Wgrad
         ttime = str(datetime.datetime.now()).replace(' ', '_')
