@@ -68,6 +68,9 @@ parser.add_argument('--num-frequencies', default = 100, help = 'number of discre
 parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
 args = parser.parse_args()
 
+if args.init_params is not None and args.num_no_polymorphism_training_batches > 0:
+    raise ValueError('cannot specify both --init-params and --num-no-polymorphism-training-batches')
+
 num_f = args.num_frequencies
 conc_factor = args.concentration_factor
 freqs = bws.get_freqs(num_f, conc_factor)
@@ -193,30 +196,31 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
     return -1.0*grad
 
 num_initial_training = 0
-initial_pf_params = np.array((-1,0.5,20))
-W[:num_pf_params] = initial_pf_params[:]
-t = 0
-done = False
-while num_initial_training < args.num_no_polymorphism_training_batches:
-    permuted_args = npr.permutation(arglist)
-    batches = np.array_split(permuted_args, split_at)
-    for j, batch in enumerate(batches):
-        t += 1
-        num_initial_training += 1
-        Wgrad = grad_target(W, batch, *remaining_args)
-        m = b1*m + (1-b1)*Wgrad
-        v = b2*v + (1-b2)*(Wgrad*Wgrad)
-        mhat = m/(1-b1**t)
-        vhat = v/(1-b2**t)
-        W += -alpha * mhat / (np.sqrt(vhat) + eps)
-        # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
-        #W[-num_pf_params:] = initial_pf_params[:]
-        W[:num_pf_params] = initial_pf_params[:]
-        ttime = str(datetime.datetime.now()).replace(' ', '_')
-        print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
-        if num_initial_training >= args.num_no_polymorphism_training_batches:
-            done = True
-            break
+if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
+    initial_pf_params = np.array((-1,0.5,20))
+    W[:num_pf_params] = initial_pf_params[:]
+    t = 0
+    done = False
+    while num_initial_training < args.num_no_polymorphism_training_batches:
+        permuted_args = npr.permutation(arglist)
+        batches = np.array_split(permuted_args, split_at)
+        for j, batch in enumerate(batches):
+            t += 1
+            num_initial_training += 1
+            Wgrad = grad_target(W, batch, *remaining_args)
+            m = b1*m + (1-b1)*Wgrad
+            v = b2*v + (1-b2)*(Wgrad*Wgrad)
+            mhat = m/(1-b1**t)
+            vhat = v/(1-b2**t)
+            W += -alpha * mhat / (np.sqrt(vhat) + eps)
+            # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
+            #W[-num_pf_params:] = initial_pf_params[:]
+            W[:num_pf_params] = initial_pf_params[:]
+            ttime = str(datetime.datetime.now()).replace(' ', '_')
+            print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
+            if num_initial_training >= args.num_no_polymorphism_training_batches:
+                done = True
+                break
 
 split_at = np.arange(0, num_args, args.batch_size)[1:]
 
@@ -224,8 +228,9 @@ m = 0
 v = 0
 t = args.time_with_polymorphism
 
-post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
-W[:num_pf_params] = post_init_pf_params[:]
+if not args.init_params:
+    post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
+    W[:num_pf_params] = post_init_pf_params[:]
 
 n_completed_reps = 0
 while True:
