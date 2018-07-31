@@ -6,12 +6,8 @@ import numpy as np
 import numpy.random as npr
 import afd
 import beta_with_spikes_integrated as bws
-import util
-import sys
 import argparse
-import datetime
 
-import h5py_util
 import neural_net as nn
 
 import tensorflow_neural_net as tfnn
@@ -20,6 +16,17 @@ import tensorflow as tf
 from scipy.special import logsumexp
 
 import argparse
+
+def get_major_minor(h5in):
+    mm = {}
+    for chrom in h5in['major_minor'].keys():
+        h5_chrom_mm = h5in['major_minor'][chrom]
+        mm[chrom] = {}
+        for bam in h5_chrom_mm.keys():
+            h5_bam_mm = h5_chrom_mm[bam]
+            t_h5_bam_mm = h5_bam_mm[:,:].copy()
+            mm[chrom][bam] = t_h5_bam_mm
+    return mm
 
 parser = argparse.ArgumentParser(
         description='Get posterior probabilities from allele-frequency distribution and neural parameters',
@@ -49,7 +56,7 @@ lpf = bws.get_lpf(pf_pars, freqs, windows)
 
 dat = h5py.File(args.input, 'r')
 print '# loading all_majorminor'
-all_majorminor = h5py_util.get_major_minor(dat)
+all_majorminor = get_major_minor(dat)
 print '# obtaining column names'
 colnames_str = dat.attrs['covariate_column_names']
 colnames = colnames_str.split(',')
