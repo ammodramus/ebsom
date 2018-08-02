@@ -54,6 +54,7 @@ parser.add_argument('--mpi', action = 'store_true')
 parser.add_argument('--num-processes', type = int, default = 1)
 parser.add_argument('--num-reps', type = int, default = 100)
 parser.add_argument('--batch-size', type = int, default = 16)
+parser.add_argument('--grad-clip', help = 'max absolute value of a gradient term', type = float, default = np.inf)
 parser.add_argument('--init-batch-size', type = int)
 parser.add_argument('--distribution-alpha', help = 'learning rate for distribution parameters only', type = float)
 parser.add_argument('--alpha', type = float, default = 0.01, help = 'learning rate after polymorphism is introduced')
@@ -66,6 +67,7 @@ parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [5
 parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = 'dropout keep probability for training')
 parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model', type = int)
 parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
+parser.add_argument('--print-interval', type = int, default = 1)
 args = parser.parse_args()
 
 if args.init_params is not None and args.num_no_polymorphism_training_batches > 0:
@@ -208,6 +210,7 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             t += 1
             num_initial_training += 1
             Wgrad = grad_target(W, batch, *remaining_args)
+            Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
             m = b1*m + (1-b1)*Wgrad
             v = b2*v + (1-b2)*(Wgrad*Wgrad)
             mhat = m/(1-b1**t)
@@ -217,7 +220,9 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             #W[-num_pf_params:] = initial_pf_params[:]
             W[:num_pf_params] = initial_pf_params[:]
             ttime = str(datetime.datetime.now()).replace(' ', '_')
-            print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
+            if j % args.print_interval == 0:
+                print '#' + '\t'.join(Wgrad.astype(str))
+                print "\t".join([str(-1), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
             if num_initial_training >= args.num_no_polymorphism_training_batches:
                 done = True
                 break
@@ -239,13 +244,17 @@ while True:
     for j, batch in enumerate(batches):
         t += 1
         Wgrad = grad_target(W, batch, *remaining_args)
+        # Apply gradient clipping
+        Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
         m = b1*m + (1-b1)*Wgrad
         v = b2*v + (1-b2)*(Wgrad*Wgrad)
         mhat = m/(1-b1**t)
         vhat = v/(1-b2**t)
         W += -alpha * mhat / (np.sqrt(vhat) + eps)
         ttime = str(datetime.datetime.now()).replace(' ', '_')
-        print "\t".join([str(n_completed_reps), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+        if j % args.print_interval == 0:
+            print '#x\tx\tx\t' + '\t'.join(Wgrad.astype(str))
+            print "\t".join([str(n_completed_reps), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
 
     n_completed_reps += 1
     if n_completed_reps >= args.num_reps:
