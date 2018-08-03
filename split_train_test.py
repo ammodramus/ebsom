@@ -34,7 +34,7 @@ parser.add_argument('--seed', help = 'random seed', type = int)
 args = parser.parse_args()
 
 if args.seed is not None:
-    npr.set_seed(args.seed)
+    npr.seed(args.seed)
 
 dat = h5py.File(args.input, 'r')
 print '# loading all_majorminor'
@@ -81,7 +81,6 @@ if num_test == 0 or num_train == 0:
 
 train_keys = shuffled_keys[:num_train]
 test_keys = shuffled_keys[num_train:]
-import pdb; pdb.set_trace()
 
 cmtrainout = trainout.create_group('covariate_matrices')
 cmtestout = testout.create_group('covariate_matrices')
