@@ -58,6 +58,8 @@ parser.add_argument('--grad-clip', help = 'max absolute value of a gradient term
 parser.add_argument('--init-batch-size', type = int)
 parser.add_argument('--distribution-alpha', help = 'learning rate for distribution parameters only', type = float)
 parser.add_argument('--alpha', type = float, default = 0.01, help = 'learning rate after polymorphism is introduced')
+parser.add_argument('--b1', type = float, help = 'decay rate for velocity mean', default = 0.9)
+parser.add_argument('--b2', type = float, help = 'decay rate for acceleration mean', default = 0.999)
 parser.add_argument('--init-alpha', type = float, help = 'learning rate for first stage of optimization, without heteroplasmy')
 parser.add_argument('--time-with-polymorphism', type = int, default = 0, help = 'value of t in ADAM algorithm after introducing polymorphism. higher means slower learning in this phase')
 parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, default = 0,
@@ -165,8 +167,8 @@ num_args = len(arglist)
 bs = args.init_batch_size if args.init_batch_size is not None else args.batch_size
 split_at = np.arange(0, num_args, bs)[1:]
 
-b1 = 0.9
-b2 = 0.999
+b1 = args.b1
+b2 = args.b2
 eps = 1e-8
 W = pars.copy()
 m = 0
@@ -203,13 +205,23 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     W[:num_pf_params] = initial_pf_params[:]
     t = 0
     done = False
+
+    num_f_init = 3
+    conc_factor_init = 10
+    freqs_init = bws.get_freqs(num_f_init, conc_factor)
+    windows_init = bws.get_window_boundaries(num_f_init, conc_factor)
+    lf_init = np.log(freqs_init)
+    l1mf_init = np.log(1-freqs_init)
+    ll_aux_init = tfnn.get_ll_and_grads_tf(num_inputs, hidden_layer_sizes, num_f_init)
+    remaining_args_init = [num_pf_params, lf_init, l1mf_init, freqs_init, windows_init, ll_aux_init, session]
+
     while num_initial_training < args.num_no_polymorphism_training_batches:
         permuted_args = npr.permutation(arglist)
         batches = np.array_split(permuted_args, split_at)
         for j, batch in enumerate(batches):
             t += 1
             num_initial_training += 1
-            Wgrad = grad_target(W, batch, *remaining_args)
+            Wgrad = grad_target(W, batch, *remaining_args_init)
             Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
             m = b1*m + (1-b1)*Wgrad
             v = b2*v + (1-b2)*(Wgrad*Wgrad)
