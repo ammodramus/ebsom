@@ -51,22 +51,21 @@ parser.add_argument('input', help = 'input HDF5 file')
 parser.add_argument('--bad-locus-file')
 parser.add_argument('--init-params',
         help = 'file with initial parameters')
-parser.add_argument('--mpi', action = 'store_true')
-parser.add_argument('--num-processes', type = int, default = 1)
 parser.add_argument('--num-epochs', type = int, default = 100)
 parser.add_argument('--batch-size', type = int, default = 16)
 parser.add_argument('--init-batch-size', type = int)
 parser.add_argument('--distribution-alpha', help = 'learning rate for distribution parameters only', type = float)
 parser.add_argument('--alpha', type = float, default = 0.01, help = 'learning rate after polymorphism is introduced')
 parser.add_argument('--init-alpha', type = float, help = 'learning rate for first stage of optimization, without heteroplasmy')
-parser.add_argument('--time-with-polymorphism', type = int, default = 0, help = 'value of t in ADAM algorithm after introducing polymorphism. higher means slower learning in this phase')
 parser.add_argument('--num-no-polymorphism-training-batches', '-n', type = int, default = 0,
-        help = 'number of loci to consider before allowing polymoprhism')
+        help = 'number of locus batches to consider before allowing polymoprhism')
 parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [50],
         help = 'hidden layer sizes, space-delimited')
 parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = 'dropout keep probability for training')
 parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model', type = int)
 parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
+parser.add_argument('--print-interval', help = 'how often to print state', default = 1, type = int)
+parser.add_argument('--grad-clip', help = 'max absolute value of a gradient term', type = float, default = np.inf)
 args = parser.parse_args()
 
 num_f = args.num_frequencies
@@ -200,25 +199,27 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
     return -1.0*grad
 
 if not args.init_params:
-    num_initial_training = 0
-    initial_pf_params = np.array((-1,0.5,20))
-    W[:num_pf_params] = initial_pf_params[:]
-    while num_initial_training < args.num_no_polymorphism_training_batches:
-        permuted_args = npr.permutation(arglist)
-        batches = np.array_split(permuted_args, split_at)
-        for j, batch in enumerate(batches):
-            num_initial_training += 1
-            Wgrad = grad_target(W, batch, *remaining_args)
-            W += -alpha * Wgrad
-            # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
-            #W[-num_pf_params:] = initial_pf_params[:]
-            W[:num_pf_params] = initial_pf_params[:]
-            ttime = str(datetime.datetime.now()).replace(' ', '_')
-            print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
-            if num_initial_training >= args.num_no_polymorphism_training_batches:
-                break
-
-split_at = np.arange(0, num_args, args.batch_size)[1:]
+    if args.num_no_polymorphism_training_batches > 0:
+        num_initial_training = 0
+        initial_pf_params = np.array((-1,0.5,20))
+        W[:num_pf_params] = initial_pf_params[:]
+        while num_initial_training < args.num_no_polymorphism_training_batches:
+            permuted_args = npr.permutation(arglist)
+            batches = np.array_split(permuted_args, split_at)
+            for j, batch in enumerate(batches):
+                num_initial_training += 1
+                Wgrad = grad_target(W, batch, *remaining_args)
+                Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
+                W += -alpha * Wgrad
+                # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
+                #W[-num_pf_params:] = initial_pf_params[:]
+                W[:num_pf_params] = initial_pf_params[:]
+                ttime = str(datetime.datetime.now()).replace(' ', '_')
+                if j % args.print_interval == 0:
+                    print '#' + '\t'.join(Wgrad.astype(str))
+                    print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
+                if num_initial_training >= args.num_no_polymorphism_training_batches:
+                    break
 
 post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
 if not args.init_params:
@@ -230,10 +231,13 @@ while True:
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
         Wgrad = grad_target(W, batch, *remaining_args)
+        Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
         print '# grad:' + '\t'.join(['{:.4e}'.format(el) for el in Wgrad])
         W += -alpha * Wgrad
         ttime = str(datetime.datetime.now()).replace(' ', '_')
-        print "\t".join([str(n_completed_epochs), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+        if j % args.print_interval == 0:
+            print '#' + '\t'.join(Wgrad.astype(str))
+            print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
 
     n_completed_epochs += 1
     if n_completed_epochs >= args.num_epochs:
