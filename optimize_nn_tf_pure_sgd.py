@@ -66,6 +66,8 @@ parser.add_argument('--num-frequencies', default = 100, help = 'number of discre
 parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
 parser.add_argument('--print-interval', help = 'how often to print state', default = 1, type = int)
 parser.add_argument('--grad-clip', help = 'max absolute value of a gradient term', type = float, default = np.inf)
+parser.add_argument('--momentum', type = float, help = 'simple momentum coefficient')
+parser.add_argument('--nesterov-momentum', type = float, help = 'Nesterov momentum coefficient')
 args = parser.parse_args()
 
 num_f = args.num_frequencies
@@ -200,6 +202,8 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
 
 if not args.init_params:
     if args.num_no_polymorphism_training_batches > 0:
+        if args.momentum is not None or args.nesterov_momentum is not None:
+            v = 0
         num_initial_training = 0
         initial_pf_params = np.array((-1,0.5,20))
         W[:num_pf_params] = initial_pf_params[:]
@@ -210,7 +214,15 @@ if not args.init_params:
                 num_initial_training += 1
                 Wgrad = grad_target(W, batch, *remaining_args)
                 Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
-                W += -alpha * Wgrad
+                if args.momentum is not None:
+                    v = args.momentum * v - alpha * Wgrad
+                    W += v
+                elif args.nesterov_momentum is not None:
+                    v_prev = v # back this up
+                    v = args.nesterov_momentum * v - alpha * dx
+                    W += -args.nesterov_momentum * v_prev + (1 + args.nesterov_momentum) * v
+                else:
+                    W += -alpha * Wgrad
                 # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
                 #W[-num_pf_params:] = initial_pf_params[:]
                 W[:num_pf_params] = initial_pf_params[:]
@@ -233,7 +245,12 @@ while True:
         Wgrad = grad_target(W, batch, *remaining_args)
         Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
         print '# grad:' + '\t'.join(['{:.4e}'.format(el) for el in Wgrad])
-        W += -alpha * Wgrad
+        if args.momentum is not None:
+            pass
+        elif args.nesterov_momentum is not None:
+            pass
+        else:
+            W += -alpha * Wgrad
         ttime = str(datetime.datetime.now()).replace(' ', '_')
         if j % args.print_interval == 0:
             print '#' + '\t'.join(Wgrad.astype(str))
