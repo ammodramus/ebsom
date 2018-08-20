@@ -4,9 +4,10 @@ import h5py
 import numpy as np
 import argparse
 
-parser = argparse.ArgumentParser(description = 'print out list of chrom/bam/position items where minor allele frequency exceeds threshold --min-freq')
-parser.add_arguments('input', help = 'input HDF5 file')
-parser.add_arguments('--min-freq', default = 0.01, help = 'minimum frequency to be output')
+parser = argparse.ArgumentParser(description = 'print out list of chrom/bam/position items where minor allele frequency exceeds threshold --min-freq',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('input', help = 'input HDF5 file')
+parser.add_argument('--min-freq', default = 0.01, help = 'minimum frequency to be output')
 args = parser.parse_args()
 
 dat = h5py.File(args.input)
