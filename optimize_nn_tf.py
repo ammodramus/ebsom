@@ -70,6 +70,8 @@ parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = '
 parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model', type = int)
 parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
 parser.add_argument('--print-interval', type = int, default = 1)
+parser.add_argument('--bad-keys', help = 'file containing list of keys to exclude (each is "chrom/bam/locus", where locus is 0-based)')
+parser.add_argument('--gentle-release', action = 'store_true', help = "'Gently release' the probability that a site is polymorphic")
 args = parser.parse_args()
 
 if args.init_params is not None and args.num_no_polymorphism_training_batches > 0:
@@ -127,7 +129,11 @@ if args.bad_locus_file is not None:
 else:
     good_keys = h5cm_keys
 
-
+if args.bad_keys is not None:
+    bad_keys = set(np.loadtxt(args.bad_keys, dtype = str))
+    good_keys_with_polym = good_keys  # determined up until now
+    good_keys = [key for key in good_keys_with_polym if key not in bad_keys]
+    print '# removed {} loci from --bad-keys file'.format(len(good_keys_with_polym)-len(good_keys))
 
 num_pf_params = 3
 
@@ -239,18 +245,29 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
                 done = True
                 break
 
-split_at = np.arange(0, num_args, args.batch_size)[1:]
+if args.bad_keys is not None:
+    arglist = get_args(good_keys_with_polym, all_majorminor)  # each element is (key, major, minor)
+    num_args = len(arglist)
+    bs = args.init_batch_size if args.init_batch_size is not None else args.batch_size
+    split_at = np.arange(0, num_args, bs)[1:]
+    split_at = np.arange(0, num_args, args.batch_size)[1:]
 
 m = 0
 v = 0
 t = args.time_with_polymorphism
 
 if not args.init_params:
-    post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
-    W[:num_pf_params] = post_init_pf_params[:]
+    if not args.gentle_release:
+        post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
+        W[:num_pf_params] = post_init_pf_params[:]
+    else:
+        # if --gentle-release is specified, the program goes into the second
+        # stage of optimization with the same distribution parameters that it
+        # ended the first stage with, namely, that there is no polymorphism
+        pass
 
-n_completed_reps = 0
-while True:
+n_completed_epochs = 0
+while n_completed_epochs < args.num_reps:
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
     for j, batch in enumerate(batches):
@@ -266,8 +283,8 @@ while True:
         ttime = str(datetime.datetime.now()).replace(' ', '_')
         if j % args.print_interval == 0:
             print '#x\tx\tx\t' + '\t'.join(Wgrad.astype(str))
-            print "\t".join([str(n_completed_reps), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+            print "\t".join([str(n_completed_epochs), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
 
-    n_completed_reps += 1
-    if n_completed_reps >= args.num_reps:
+    n_completed_epochs += 1
+    if n_completed_epochs >= args.num_reps:
         break

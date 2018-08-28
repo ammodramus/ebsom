@@ -69,8 +69,9 @@ parser.add_argument('--num-hidden-layers', type = int, nargs = '+', default = [5
 parser.add_argument('--dropout-keep-prob', type = float, default = 1.0, help = 'dropout keep probability for training')
 parser.add_argument('--num-frequencies', default = 100, help = 'number of discrete frequencies to model', type = int)
 parser.add_argument('--concentration-factor', default = 10, help = '"concentration factor" for frequency spacing. Defaults to 10, equal to PSMC spacing', type = int)
+parser.add_argument('--bad-keys', help = 'file containing list of keys to exclude (each is "chrom/bam/locus", where locus is 0-based)')
 parser.add_argument('--print-interval', type = int, default = 1)
-parser.add_argument('--rmsprop', action = 'store_true', help = 'use RMSProp instead of ADAM, removes momentum, just keeps track of latest squared gradient values')
+parser.add_argument('--gentle-release', action = 'store_true', help = "'Gently release' the probability that a site is polymorphic")
 args = parser.parse_args()
 
 if args.init_params is not None and args.num_no_polymorphism_training_batches > 0:
@@ -128,6 +129,12 @@ if args.bad_locus_file is not None:
 else:
     good_keys = h5cm_keys
 
+
+if args.bad_keys is not None:
+    bad_keys = set(np.loadtxt(args.bad_keys, dtype = str))
+    good_keys_with_polym = good_keys  # determined up until now
+    good_keys = [key for key in good_keys_with_polym if key not in bad_keys]
+    print '# removed {} loci from --bad-keys file'.format(len(good_keys_with_polym)-len(good_keys))
 
 
 num_pf_params = 3
@@ -200,6 +207,8 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
     grad = np.mean(grads, axis = 0)
     return -1.0*grad
 
+vhat = 0
+
 num_initial_training = 0
 if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     initial_pf_params = np.array((-1,0.5,20))
@@ -227,7 +236,7 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             m = b1*m + (1-b1)*Wgrad
             v = b2*v + (1-b2)*(Wgrad*Wgrad)
             vhat = np.maximum(vhat, v)
-            W += -alpha/(np.sqrt(vhat) + eps) * mhat
+            W += -alpha/(np.sqrt(vhat) + eps) * m
             # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
             #W[-num_pf_params:] = initial_pf_params[:]
             W[:num_pf_params] = initial_pf_params[:]
@@ -239,6 +248,12 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
                 done = True
                 break
 
+if args.bad_keys is not None:
+    arglist = get_args(good_keys_with_polym, all_majorminor)  # each element is (key, major, minor)
+    num_args = len(arglist)
+    bs = args.init_batch_size if args.init_batch_size is not None else args.batch_size
+    split_at = np.arange(0, num_args, bs)[1:]
+
 split_at = np.arange(0, num_args, args.batch_size)[1:]
 
 m = 0
@@ -246,8 +261,14 @@ v = 0
 t = args.time_with_polymorphism
 
 if not args.init_params:
-    post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
-    W[:num_pf_params] = post_init_pf_params[:]
+    if not args.gentle_release:
+        post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
+        W[:num_pf_params] = post_init_pf_params[:]
+    else:
+        # if --gentle-release is specified, the program goes into the second
+        # stage of optimization with the same distribution parameters that it
+        # ended the first stage with, namely, that there is no polymorphism
+        pass
 
 n_completed_reps = 0
 while True:
@@ -261,7 +282,7 @@ while True:
         m = b1*m + (1-b1)*Wgrad
         v = b2*v + (1-b2)*(Wgrad*Wgrad)
         vhat = np.maximum(vhat, v)
-        W += -alpha/(np.sqrt(vhat) + eps) * mhat
+        W += -alpha/(np.sqrt(vhat) + eps) * m
         ttime = str(datetime.datetime.now()).replace(' ', '_')
         if j % args.print_interval == 0:
             print '#x\tx\tx\t' + '\t'.join(Wgrad.astype(str))

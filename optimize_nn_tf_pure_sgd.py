@@ -68,6 +68,8 @@ parser.add_argument('--print-interval', help = 'how often to print state', defau
 parser.add_argument('--grad-clip', help = 'max absolute value of a gradient term', type = float, default = np.inf)
 parser.add_argument('--momentum', type = float, help = 'simple momentum coefficient')
 parser.add_argument('--nesterov-momentum', type = float, help = 'Nesterov momentum coefficient')
+parser.add_argument('--stepsize-annealing-factor', type = float, help = 'Multiply alpha by this every epoch, for annealing the stepsize')
+parser.add_argument('--gentle-release', action = 'store_true', help = "'Gently release' the probability that a site is polymorphic")
 args = parser.parse_args()
 
 num_f = args.num_frequencies
@@ -219,7 +221,7 @@ if not args.init_params:
                     W += v
                 elif args.nesterov_momentum is not None:
                     v_prev = v # back this up
-                    v = args.nesterov_momentum * v - alpha * dx
+                    v = args.nesterov_momentum * v - alpha * Wgrad
                     W += -args.nesterov_momentum * v_prev + (1 + args.nesterov_momentum) * v
                 else:
                     W += -alpha * Wgrad
@@ -232,10 +234,18 @@ if not args.init_params:
                     print "\t".join([str(-1), str(num_initial_training), ttime] + ['{:.4e}'.format(el) for el in W])
                 if num_initial_training >= args.num_no_polymorphism_training_batches:
                     break
+            if args.stepsize_annealing_factor is not None:
+                alpha *= args.stepsize_annealing_factor
 
-post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
 if not args.init_params:
-    W[:num_pf_params] = post_init_pf_params[:]
+    if not args.gentle_release:
+        post_init_pf_params = np.array((-1,0.5,7))  # corresponding to 0.9990889 prob of being fixed
+        W[:num_pf_params] = post_init_pf_params[:]
+    else:
+        # if --gentle-release is specified, the program goes into the second
+        # stage of optimization with the same distribution parameters that it
+        # ended the first stage with, namely, that there is no polymorphism
+        pass
 
 n_completed_epochs = 0
 while True:
@@ -246,9 +256,12 @@ while True:
         Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
         print '# grad:' + '\t'.join(['{:.4e}'.format(el) for el in Wgrad])
         if args.momentum is not None:
-            pass
+            v = args.momentum * v - alpha * Wgrad
+            W += v
         elif args.nesterov_momentum is not None:
-            pass
+            v_prev = v # back this up
+            v = args.nesterov_momentum * v - alpha * Wgrad
+            W += -args.nesterov_momentum * v_prev + (1 + args.nesterov_momentum) * v
         else:
             W += -alpha * Wgrad
         ttime = str(datetime.datetime.now()).replace(' ', '_')
