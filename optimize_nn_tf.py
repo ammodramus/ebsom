@@ -182,6 +182,7 @@ if args.distribution_alpha:
 # these are the args in the call to grad_target, following batch
 remaining_args = [num_pf_params, lf, l1mf, freqs, windows, ll_aux, session]
 
+
 def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_aux, session):
     loc_gradient_args = []
     lls = []
@@ -201,6 +202,25 @@ def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_a
 
 num_initial_training = 0
 if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
+    ll_aux_no_poly = tfnn.get_ll_and_grads_no_poly_tf(num_inputs, hidden_layer_sizes)
+    
+    def grad_target_no_poly(params, batch, ll_aux, session):
+        loc_gradient_args = []
+        lls = []
+        grads = []
+        for key, major, minor in batch:
+            cm = h5cm[key][:]
+            lo = h5lo[key]
+            lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
+            num_obs = cm.shape[0]
+            ll, grad = tfnn.loglike_and_gradient_wrapper_no_poly(params, cm, lo, major,
+                    minor, args.dropout_keep_prob, ll_aux_no_poly, session)
+            lls.append(ll)
+            grads.append(grad)
+        grad = np.mean(grads, axis = 0)
+        return -1.0*grad
+
+
     initial_pf_params = np.array((-1,0.5,20))
     W[:num_pf_params] = initial_pf_params[:]
     t = 0
@@ -213,7 +233,8 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     lf_init = np.log(freqs_init)
     l1mf_init = np.log(1-freqs_init)
     ll_aux_init = tfnn.get_ll_and_grads_tf(num_inputs, hidden_layer_sizes, num_f_init)
-    remaining_args_init = [num_pf_params, lf_init, l1mf_init, freqs_init, windows_init, ll_aux_init, session]
+    #remaining_args_init = [num_pf_params, lf_init, l1mf_init, freqs_init, windows_init, ll_aux_init, session]
+    remaining_args_init = [ll_aux_init, session]
 
     while num_initial_training < args.num_no_polymorphism_training_batches:
         permuted_args = npr.permutation(arglist)
@@ -221,16 +242,14 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
         for j, batch in enumerate(batches):
             t += 1
             num_initial_training += 1
-            Wgrad = grad_target(W, batch, *remaining_args_init)
+            Wgrad = grad_target_no_poly(W[num_pf_params:], batch, *remaining_args_init)
             Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
+            print Wgrad.shape
             m = b1*m + (1-b1)*Wgrad
             v = b2*v + (1-b2)*(Wgrad*Wgrad)
             mhat = m/(1-b1**t)
             vhat = v/(1-b2**t)
-            W += -alpha * mhat / (np.sqrt(vhat) + eps)
-            # keep the probability of heteroplasmy at 1-1/(1+exp(-30))
-            #W[-num_pf_params:] = initial_pf_params[:]
-            W[:num_pf_params] = initial_pf_params[:]
+            W[num_pf_params:] += -alpha[num_pf_params:] * mhat / (np.sqrt(vhat) + eps)
             ttime = str(datetime.datetime.now()).replace(' ', '_')
             if j % args.print_interval == 0:
                 print '#' + '\t'.join(Wgrad.astype(str))
