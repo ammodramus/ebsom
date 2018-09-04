@@ -244,7 +244,6 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             num_initial_training += 1
             Wgrad = grad_target_no_poly(W[num_pf_params:], batch, *remaining_args_init)
             Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
-            print Wgrad.shape
             m = b1*m + (1-b1)*Wgrad
             v = b2*v + (1-b2)*(Wgrad*Wgrad)
             mhat = m/(1-b1**t)
