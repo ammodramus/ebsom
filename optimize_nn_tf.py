@@ -258,7 +258,7 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             vhat = v/(1-b2**t)
             W[num_pf_params:] += -alpha[num_pf_params:] * mhat / (np.sqrt(vhat) + eps)
             ttime = str(datetime.datetime.now()).replace(' ', '_')
-            if j % args.print_interval == 0:
+            if init_batches_completed % args.print_interval == 0:
                 print '#' + '\t'.join(Wgrad.astype(str))
                 print "\t".join([str(-1), str(init_batches_completed), ttime] + ['{:.4e}'.format(el) for el in W])
             if num_initial_training >= args.num_no_polymorphism_training_batches:
