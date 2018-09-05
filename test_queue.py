@@ -103,17 +103,24 @@ h5lo = dat['locus_observations']
 
 if rank != 0:
     first_batch = comm.recv(source = 0)
+    print 'recv\'ed batch in {}'.format(rank)
     batch_data = []
     for key, major, minor in first_batch:
         cm = h5cm[key][:]
         lo = h5lo[key]
         lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
         batch_data.append((cm, lo, major, minor))
+    print 'completed first batch processing in {}'.format(rank)
     while True:
+        print 'waiting for next batch in {}'.format(rank)
         batch = comm.recv(source = 0)
+        print 'received next batch in {}'.format(rank)
         comm.send(batch_data, dest = 0)
-        if batch == 'exit':
+        if 'exit' in batch:
             sys.exit(0)
+        elif 'wait' in batch:
+            print 'waiting on {}'.format(rank)
+            continue
         batch_data = []
         for key, major, minor in batch:
             cm = h5cm[key][:]
@@ -238,13 +245,11 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     ll_aux_no_poly = tfnn.get_ll_and_grads_no_poly_tf(num_inputs, hidden_layer_sizes)
     
     def grad_target_no_poly(params, batch, ll_aux, session):
+        print 'entering grad_target_no_poly'
         loc_gradient_args = []
         lls = []
         grads = []
-        for key, major, minor in batch:
-            cm = h5cm[key][:]
-            lo = h5lo[key]
-            lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
+        for cm, lo, major, minor in batch:
             num_obs = cm.shape[0]
             ll, grad = tfnn.loglike_and_gradient_wrapper_no_poly(params, cm, lo, major,
                     minor, args.dropout_keep_prob, ll_aux_no_poly, session)
@@ -270,15 +275,32 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
 
     init_batches_completed = 0
     while num_initial_training < args.num_no_polymorphism_training_batches:
+        print 'entering main loop in {}'.format(rank)
         permuted_args = npr.permutation(arglist)
         batches = np.array_split(permuted_args, split_at)
+        num_batches = len(batches)
 
         # seed the workers
+        next_batch_idx = 0
         for i in range(num_workers):
-            comm.send(batches[i], dest = i+1)
-            print 'sending batch {} to {} from {}'.format(i, i+1, comm.rank)
+            comm.send(batches[next_batch_idx], dest = i+1)
+            next_batch_idx += 1
+        current_worker = 0
+        batches_completed = 0
+        while batches_completed < num_batches:
+            # have to send a batch before you get a batch... get the batch from the worker
+            if next_batch_idx < num_batches:
+                print 'sending next batch to {} from {}'.format(current_worker+1, rank)
+                comm.send(batches[next_batch_idx], dest = current_worker+1)
+                next_batch_idx += 1
+            else:
+                print 'sending "wait" to {} from {}'.format(current_worker+1, rank)
+                comm.send('wait', dest = current_worker+1)
+            print 'waiting for message from {} on {}'.format(current_worker+1, rank)
+            batch = comm.recv(source = current_worker+1)
+            print 'received batch message on {}, calculating gradient'.format(rank)
+            current_worker = (current_worker + 1) % num_workers
 
-        for j, batch in enumerate(batches):
             t += 1
             init_batches_completed += 1
             num_initial_training += 1
@@ -290,7 +312,8 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             vhat = v/(1-b2**t)
             W[num_pf_params:] += -alpha[num_pf_params:] * mhat / (np.sqrt(vhat) + eps)
             ttime = str(datetime.datetime.now()).replace(' ', '_')
-            if j % args.print_interval == 0:
+            batches_completed += 1
+            if batches_completed % args.print_interval == 0:
                 print '#' + '\t'.join(Wgrad.astype(str))
                 print "\t".join([str(-1), str(init_batches_completed), ttime] + ['{:.4e}'.format(el) for el in W])
             if num_initial_training >= args.num_no_polymorphism_training_batches:
