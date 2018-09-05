@@ -236,11 +236,13 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     #remaining_args_init = [num_pf_params, lf_init, l1mf_init, freqs_init, windows_init, ll_aux_init, session]
     remaining_args_init = [ll_aux_init, session]
 
+    init_batches_completed = 0
     while num_initial_training < args.num_no_polymorphism_training_batches:
         permuted_args = npr.permutation(arglist)
         batches = np.array_split(permuted_args, split_at)
         for j, batch in enumerate(batches):
             t += 1
+            init_batches_completed += 1
             num_initial_training += 1
             Wgrad = grad_target_no_poly(W[num_pf_params:], batch, *remaining_args_init)
             Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
@@ -252,7 +254,7 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             ttime = str(datetime.datetime.now()).replace(' ', '_')
             if j % args.print_interval == 0:
                 print '#' + '\t'.join(Wgrad.astype(str))
-                print "\t".join([str(-1), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+                print "\t".join([str(-1), str(init_batches_completed), ttime] + ['{:.4e}'.format(el) for el in W])
             if num_initial_training >= args.num_no_polymorphism_training_batches:
                 done = True
                 break
