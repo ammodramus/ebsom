@@ -274,6 +274,7 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     remaining_args_init = [ll_aux_init, session]
 
     init_batches_completed = 0
+    import time
     while num_initial_training < args.num_no_polymorphism_training_batches:
         #print 'entering main loop in {}'.format(rank)
         permuted_args = npr.permutation(arglist)
@@ -287,8 +288,11 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             next_batch_idx += 1
         current_worker = 0
         batches_completed = 0
+        batch_times = []
+        grad_times = []
         while batches_completed < num_batches:
             # have to send a batch before you get a batch... get the batch from the worker
+            start = time.time()
             if next_batch_idx < num_batches:
                 #print 'sending next batch to {} from {}'.format(current_worker+1, rank)
                 comm.send(batches[next_batch_idx], dest = current_worker+1)
@@ -300,10 +304,12 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             batch = comm.recv(source = current_worker+1)
             #print 'received batch message on {}, calculating gradient'.format(rank)
             current_worker = (current_worker + 1) % num_workers
+            batch_times.append(time.time()-start)
 
             t += 1
             init_batches_completed += 1
             num_initial_training += 1
+            start = time.time()
             Wgrad = grad_target_no_poly(W[num_pf_params:], batch, *remaining_args_init)
             Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
             m = b1*m + (1-b1)*Wgrad
@@ -311,10 +317,12 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             mhat = m/(1-b1**t)
             vhat = v/(1-b2**t)
             W[num_pf_params:] += -alpha[num_pf_params:] * mhat / (np.sqrt(vhat) + eps)
+            grad_times.append(time.time()-start)
             ttime = str(datetime.datetime.now()).replace(' ', '_')
             batches_completed += 1
             if batches_completed % args.print_interval == 0:
                 print '#' + '\t'.join(Wgrad.astype(str))
+                print '##', np.mean(batch_times), np.mean(grad_times)
                 print "\t".join([str(-1), str(init_batches_completed), ttime] + ['{:.4e}'.format(el) for el in W])
             if num_initial_training >= args.num_no_polymorphism_training_batches:
                 done = True
