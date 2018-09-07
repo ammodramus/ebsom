@@ -304,20 +304,20 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
         # seed the worker
         batch_idx = 0
         #print 'sending batch {} to 1 from {} [init]'.format(batch_idx, rank)
-        comm.send(batches[batch_idx], dest = 1)
+        comm.send((batches[batch_idx], batch_idx), dest = 1)
         batch_idx += 1
 
         batches_completed = 0
         while batch_idx < num_batches:
             t1 = time.time()
             if batch_idx < num_batches - 1:
-                comm.send(batches[batch_idx], dest = 1)
+                comm.send((batches[batch_idx], batch_idx), dest = 1)
                 #print 'sending batch {} (of {}) to 1 from {} [init]'.format(batch_idx, num_batches, rank)
             else:
                 comm.send((None, None), dest = 1)
             # this is batch_idx-1
             #print 'receiving batch from 1 [init]'
-            batch = comm.recv(source = 1)
+            batch, bidx = comm.recv(source = 1)
             t2 = time.time()
             batch_idx += 1
 
