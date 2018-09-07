@@ -346,6 +346,9 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
                 done = True
                 break
 
+    # have to reset the minion process
+    comm.send((None, None), dest = 1)
+
 if args.bad_keys is not None:
     arglist = get_args(good_keys_with_polym, all_majorminor)  # each element is (key, major, minor)
     num_args = len(arglist)
