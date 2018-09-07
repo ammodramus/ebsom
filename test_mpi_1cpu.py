@@ -15,6 +15,9 @@ import tensorflow as tf
 
 from mpi4py import MPI
 
+batch_times = []
+grad_times = []
+
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 if rank > 1:
@@ -44,6 +47,19 @@ def get_major_minor(h5in):
             t_h5_bam_mm = h5_bam_mm[:,:].copy()
             mm[chrom][bam] = t_h5_bam_mm
     return mm
+
+def grad_target(params, batch, ll_aux, session):
+    loc_gradient_args = []
+    lls = []
+    grads = []
+    for cm, lo, major, minor in batch:
+        num_obs = cm.shape[0]
+        ll, grad = tfnn.loglike_and_gradient_wrapper(params, cm, lo, major,
+                minor, 3, lf, l1mf, freqs, windows, args.dropout_keep_prob, ll_aux, session)
+        lls.append(ll)
+        grads.append(grad)
+    grad = np.mean(grads, axis = 0)
+    return -1.0*grad
 
 
 
@@ -120,31 +136,35 @@ if rank != 0:
     '''
     first, master sends minion its first 
     '''
-    assert rank == 1, "expected just rank 1"
-
     ready = False
 
-    first_batch = comm.recv(source = 0)
+    #print '(i) waiting for first batch in {}'.format(rank)
+    first_batch, bidx = comm.recv(source = 0)
+    #print '(ii) received first batch ({}) in {}'.format(bidx, rank)
 
     #print 'recv\'ed batch in {}'.format(rank)
     batch_data = get_batch(first_batch)
 
     #print 'completed first batch processing in {}'.format(rank)
     while True:
-        #print 'waiting for next batch in {}'.format(rank)
-        batch = comm.recv(source = 0)
-        if 'exit' in batch:
+        #print '(I) waiting for next batch in {}'.format(rank)
+        batch, nbidx = comm.recv(source = 0)
+        #print '(II) received order for next batch ({}) in {}'.format(nbidx, rank)
+        if batch is not None and 'exit' in batch:
             sys.exit(0)
         if batch is not None:
             ready = True
         else:
             ready = False
-        #print 'received next batch in {}'.format(rank)
         # regardless of whether or not the last transmission was None, we're sending the next data, next
-        comm.send(batch_data, dest = 0)
+        #print '(III) sending batch {} from {} to {}'.format(bidx, rank, 0)
+        comm.send((batch_data, bidx), dest = 0)
+        #print '(IV) sent batch {} from {} to {}'.format(bidx, rank, 0)
+        bidx = nbidx
         if not ready:
             assert batch is None 
-            batch = comm.recv(source = 0)
+            #print '(V) waiting for final batch from 0 in {}'.format(0, rank)
+            batch, bidx = comm.recv(source = 0)
         batch_data = get_batch(batch)
 
 print '# getting covariate matrix keys'
@@ -241,23 +261,6 @@ if args.distribution_alpha:
 remaining_args = [num_pf_params, lf, l1mf, freqs, windows, ll_aux, session]
 
 
-def grad_target(params, batch, num_pf_params, logf, log1mf, freqs, windows, ll_aux, session):
-    loc_gradient_args = []
-    lls = []
-    grads = []
-    for key, major, minor in batch:
-        cm = h5cm[key][:]
-        lo = h5lo[key]
-        lo = [[lo['f1'][:], lo['f2'][:]], [lo['r1'][:], lo['r2'][:]]]
-        num_obs = cm.shape[0]
-        ll, grad = tfnn.loglike_and_gradient_wrapper(params, cm, lo, major,
-                minor, num_pf_params, logf, log1mf, freqs, windows, args.dropout_keep_prob, ll_aux,
-                session)
-        lls.append(ll)
-        grads.append(grad)
-    grad = np.mean(grads, axis = 0)
-    return -1.0*grad
-
 if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
     ll_aux_no_poly = tfnn.get_ll_and_grads_no_poly_tf(num_inputs, hidden_layer_sizes)
     
@@ -296,20 +299,26 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
         permuted_args = npr.permutation(arglist)
         batches = np.array_split(permuted_args, split_at)
         num_batches = len(batches)
+        #print num_batches
 
-        # seed the workers
+        # seed the worker
         batch_idx = 0
+        #print 'sending batch {} to 1 from {} [init]'.format(batch_idx, rank)
         comm.send(batches[batch_idx], dest = 1)
         batch_idx += 1
 
         batches_completed = 0
         while batch_idx < num_batches:
+            t1 = time.time()
             if batch_idx < num_batches - 1:
-                comm.send(batches[batch_idx], dest = current_worker+1)
+                comm.send(batches[batch_idx], dest = 1)
+                #print 'sending batch {} (of {}) to 1 from {} [init]'.format(batch_idx, num_batches, rank)
             else:
-                comm.send(None)
+                comm.send((None, None), dest = 1)
             # this is batch_idx-1
-            batch = comm.recv(source = current_worker+1)
+            #print 'receiving batch from 1 [init]'
+            batch = comm.recv(source = 1)
+            t2 = time.time()
             batch_idx += 1
 
             t += 1
@@ -322,10 +331,14 @@ if (not args.init_params) and (args.num_no_polymorphism_training_batches > 0):
             mhat = m/(1-b1**t)
             vhat = v/(1-b2**t)
             W[num_pf_params:] += -alpha[num_pf_params:] * mhat / (np.sqrt(vhat) + eps)
-            grad_times.append(time.time()-start)
+            #grad_times.append(time.time()-start)
             ttime = str(datetime.datetime.now()).replace(' ', '_')
             batches_completed += 1
+            t3 = time.time()
+            batch_times.append(t2-t1)
+            grad_times.append(t3-t2)
             if batches_completed % args.print_interval == 0:
+                #pass
                 print '#' + '\t'.join(Wgrad.astype(str))
                 print '##', np.mean(batch_times), np.mean(grad_times)
                 print "\t".join([str(-1), str(init_batches_completed), ttime] + ['{:.4e}'.format(el) for el in W])
@@ -356,22 +369,59 @@ if not args.init_params:
 
 n_completed_epochs = 0
 while n_completed_epochs < args.num_reps:
+
+
     permuted_args = npr.permutation(arglist)
     batches = np.array_split(permuted_args, split_at)
-    for j, batch in enumerate(batches):
+    num_batches = len(batches)
+
+    # seed the worker
+    batch_idx = 0
+    #print '(a) sending first batch {} to 1 from {}'.format(batch_idx, rank)
+    comm.send((batches[batch_idx], batch_idx), dest = 1)
+    #print '(b) sent first batch {} to 1 from {}'.format(batch_idx, rank)
+    batch_idx += 1
+
+    batches_completed = 0
+    while batch_idx < num_batches:
+        t1 = time.time()
+        if batch_idx < num_batches - 1:
+            #print '(A) sending batch {} (of {}) to 1 from {}'.format(batch_idx, num_batches, rank)
+            comm.send((batches[batch_idx], batch_idx), dest = 1)
+            #print '(B) sent batch {} (of {}) to 1 from {}'.format(batch_idx, num_batches, rank)
+        else:
+            comm.send((None, None), dest = 1)
+        # this is batch_idx-1
+        #print '(C) waiting for batch from 1'
+        batch, this_batch_idx = comm.recv(source = 1)
+        #print '(D) received batch {} from 1'.format(this_batch_idx)
+        batch_idx += 1
+
         t += 1
-        Wgrad = grad_target(W, batch, *remaining_args)
-        # Apply gradient clipping
+        t2 = time.time()
+
+        #print '(E) calculating grad target'
+        Wgrad = grad_target(W, batch, ll_aux, session)
+        #print '(F) calculated grad target'
         Wgrad = np.sign(Wgrad) * np.minimum(np.abs(Wgrad), args.grad_clip)
         m = b1*m + (1-b1)*Wgrad
         v = b2*v + (1-b2)*(Wgrad*Wgrad)
         mhat = m/(1-b1**t)
         vhat = v/(1-b2**t)
         W += -alpha * mhat / (np.sqrt(vhat) + eps)
+        t3 = time.time()
+        #grad_times.append(time.time()-start)
         ttime = str(datetime.datetime.now()).replace(' ', '_')
-        if j % args.print_interval == 0:
-            print '#x\tx\tx\t' + '\t'.join(Wgrad.astype(str))
-            print "\t".join([str(n_completed_epochs), str(j), ttime] + ['{:.4e}'.format(el) for el in W])
+        batches_completed += 1
+        batch_times.append(t2-t1)
+        grad_times.append(t3-t2)
+        if batches_completed % args.print_interval == 0:
+            #pass
+            print '#' + '\t'.join(Wgrad.astype(str))
+            print '##', np.mean(batch_times), np.mean(grad_times)
+            print "\t".join([str(-1), str(batches_completed), ttime] + ['{:.4e}'.format(el) for el in W])
+            grad_times = []
+            batch_times = []
 
     n_completed_epochs += 1
     if n_completed_epochs >= args.num_reps:
