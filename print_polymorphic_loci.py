@@ -7,7 +7,7 @@ import argparse
 parser = argparse.ArgumentParser(description = 'print out list of chrom/bam/position items where minor allele frequency exceeds threshold --min-freq',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('input', help = 'input HDF5 file')
-parser.add_argument('--min-freq', default = 0.01, help = 'minimum frequency to be output')
+parser.add_argument('--min-freq', default = 0.01, help = 'minimum frequency to be output', type = float)
 args = parser.parse_args()
 
 dat = h5py.File(args.input)
@@ -31,9 +31,9 @@ for chrom in h5lo.keys():
                     counts += tlo.sum(0)
             total = counts.sum()
             maf = np.sort(counts)[::-1][1] / total
+            key = '/'.join([chrom, bam, locus])
             if maf > min_maf:
-                key = '/'.join([chrom, bam, locus])
-                bad_keys.append(key)
-
-for bk in bad_keys:
-    print bk
+                print key
+            else:
+                pass
+                #print '# not', key, 'with maf', maf
