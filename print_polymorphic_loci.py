@@ -33,7 +33,7 @@ for chrom in h5lo.keys():
             maf = np.sort(counts)[::-1][1] / total
             key = '/'.join([chrom, bam, locus])
             if maf > min_maf:
-                print key
+                print '{}\t{}'.format(key, maf)
             else:
                 pass
                 #print '# not', key, 'with maf', maf
