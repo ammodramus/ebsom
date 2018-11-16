@@ -22,10 +22,6 @@ parser.add_argument('--min-bq', help = 'minimum base quality',
         type = ut.positive_int, default = 20)
 parser.add_argument('--min-mq', help = 'minimum mapping quality',
         type = ut.positive_int, default = 20)
-parser.add_argument('--min-candidate-freq', type = ut.probability,
-        default = 1e-3,
-        help = 'minimum frequency at a column to be considered a candidate '
-               'for polymorphism')
 parser.add_argument('--bam-data',
         help = 'comma-separated (csv) dataset containing supplementary '
                'variables for different bam files. added to covariates for '
