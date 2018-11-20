@@ -74,6 +74,12 @@ def get_contamination(position, position_consensuses):
     return forward_contam, reverse_contam
 
 
+def get_bam_data(bam_fn, all_bam_fns):
+    bam_data = np.zeros(len(all_bam_fns), dtype = np.float32)
+    bam_data[all_bam_fns.index(bam_fn)] = 1.0
+    return bam_data
+
+
 
 
 desc = 'jointly infer sequencing error profiles and polymorphisms'
@@ -144,7 +150,7 @@ logf = np.log(freqs)
 log1mf = np.log(1-freqs)
 
 ncols = 4
-ncols_const = 12
+ncols_const = 12 + len(bam_fns)
 hidden_layer_sizes = [20,20]
 
 # TODO figure out ncols and ncols_const ahead of time
@@ -209,8 +215,10 @@ def get_data(dataslice):
     forward_context, reverse_context = get_context_data(cons,position, args.context_length)
     forward_contam, reverse_contam = get_contamination(position, position_consensuses)
 
-    forward_const_cov = np.concatenate((forward_context, forward_contam))
-    reverse_const_cov = np.concatenate((reverse_context, reverse_contam))
+    bam_data = get_bam_data(bamfn, bam_fns)
+
+    forward_const_cov = np.concatenate((forward_context, forward_contam, bam_data))
+    reverse_const_cov = np.concatenate((reverse_context, reverse_contam, bam_data))
     return (for_cov, for_obs, rev_cov, rev_obs, forward_context,
             reverse_context, forward_contam, reverse_contam, forward_const_cov,
             reverse_const_cov, major, minor, position)
