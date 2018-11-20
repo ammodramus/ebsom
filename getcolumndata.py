@@ -28,7 +28,8 @@ def get_context_data(
         position,
         context_len,
         circular=True,
-        onehot=False):
+        onehot=False,
+        max_context_size=100):
     # note: position is 1-based. converting here to 0-based to work with array
     position -= 1
     conslen = len(cons)
@@ -42,16 +43,20 @@ def get_context_data(
             raise ValueError("cannot get context for position {} "
                              "with reference length {}".format(position,conslen))
 
+    if circular:
+        cons = cons + cons + cons  # 1) add the same sequence before and after
+        position += conslen        # 2) amend position to reflect new sequence (note conslen not used again)
+
     forward_context_bases = cons[position-context_len:position]
     #reverse_context_bases = cgcd.complement(cons[position:position-context_len:-1])   # still forward translation
     reverse_context_bases = complement(cons[position+2:position:-1])   # still forward translation
     if onehot:
         raise NotImplementedError('onehot not yet implemented')
     else:
-        forward_context = np.zeros(4*context_len)
+        forward_context = np.zeros(4*context_len, dtype = np.float32)
         for i in xrange(context_len):
             forward_context[i*4+'ACGT'.index(forward_context_bases[i])] = 1
-        reverse_context = np.zeros(4*context_len)
+        reverse_context = np.zeros(4*context_len, dtype = np.float32)
         for i in xrange(context_len):
             reverse_context[i*4+'ACGT'.index(reverse_context_bases[i])] = 1
 
@@ -62,16 +67,11 @@ def get_context_data(
 def get_contamination(position, position_consensuses):
     forward_bases, forward_counts = np.unique(position_consensuses, return_counts=True)
     forward_fracs = forward_counts.astype(np.float64)/len(position_consensuses)
-    forward_contam = np.zeros(4)
+    forward_contam = np.zeros(4, dtype = np.float32)
     for base, frac in zip(forward_bases, forward_fracs):
         forward_contam['ACGT'.index(base)] = frac
     reverse_contam = forward_contam[::-1].copy()
     return forward_contam, reverse_contam
-
-
-
-
-
 
 
 
@@ -213,35 +213,35 @@ def get_data(dataslice):
     reverse_const_cov = np.concatenate((reverse_context, reverse_contam))
     return (for_cov, for_obs, rev_cov, rev_obs, forward_context,
             reverse_context, forward_contam, reverse_contam, forward_const_cov,
-            reverse_const_cov)
+            reverse_const_cov, major, minor, position)
 
 
 all_loci_tf = tf.constant(all_loci)
-ret_type = tuple([tf.float32]*10)
-dataset = tf.data.Dataset.from_tensor_slices(all_loci_tf).map(lambda x: tf.py_func(get_data, [x], ret_type, stateful = False))
-dataset = dataset.shuffle(all_loci_tf.shape[0], reshuffle_each_iteration=True).batch(1)
-it = dataset.make_initializable_iterator()
-next_data = it.get_next()
+ret_type = tuple([tf.float32]*10 + [tf.string]*2 + [tf.int64])
 
 sess = tf.Session()
 sess.run(tf.global_variables_initializer())
 for epoch in xrange(args.numepochs):
-    sess.run(it.intializer)
-    (for_cov_tf, for_obs_tf, rev_cov_tf, rev_obs_tf, forward_context_tf,
-            reverse_context_tf, forward_contamination_tf, reverse_contamination_tf,
-            forward_const_cov_tf, reverse_const_cov_tf) = it.get_next()
+    all_loci_shuf_tf = tf.constant(npr.permutation(all_loci))
+    dataset = tf.data.Dataset.from_tensor_slices(all_loci_shuf_tf).map(lambda x: tf.py_func(get_data, [x], ret_type, stateful = False))
+    dataset = dataset.shuffle(1, reshuffle_each_iteration=True).batch(1)
+    it = dataset.make_initializable_iterator()
+    next_data = it.get_next()
+    sess.run(it.initializer)
+    while True:
+        try:
+            (for_cov, for_obs, rev_cov, rev_obs, forward_context,
+                    reverse_context, forward_contam, reverse_contam, forward_const_cov,
+                    reverse_const_cov, major, minor, position) = sess.run(next_data)
+        except tf.errors.OutOfRangeError:
+            break
+        major = major[0]
+        minor = minor[0]
 
-    (for_cov, for_obs, rev_cov, rev_obs, forward_context,
-            reverse_context, forward_contam, reverse_contam, forward_const_cov,
-            reverse_const_cov) = sess.run(next_data)
-
-    print('getting data took {} seconds for {}'.format(dur, position))
-
-    start = time.time()
-    ll, grads = rt.loglike_and_gradient_wrapper(init_params, for_cov,
-            rev_cov, forward_const_cov, reverse_const_cov, for_obs,
-            rev_obs, major, minor, num_pf_params, logf, log1mf, freqs,
-            windows, ll_aux, sess)
-    dur = time.time()-start
-
-    print('calculating gradient took {} seconds for {}'.format(dur, position))
+        start = time.time()
+        ll, grads = rt.loglike_and_gradient_wrapper(init_params, for_cov[0],
+                rev_cov[0], forward_const_cov[0], reverse_const_cov[0], for_obs[0],
+                rev_obs[0], major, minor, num_pf_params, logf, log1mf, freqs,
+                windows, ll_aux, sess)
+        dur = time.time()-start
+        print('took {} seconds for position {}'.format(dur, position[0]))

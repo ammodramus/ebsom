@@ -53,6 +53,8 @@ extensions = [
     Extension("doubleveccounts", ["doubleveccounts.pyx"],
         define_macros = profile_macros),
     Extension("cyglobal", ["cyglobal.pyx"], include_dirs = [np.get_include()],
+        define_macros = profile_macros),
+    Extension("cygetcolumndata", ["cygetcolumndata.pyx"], include_dirs = [np.get_include()],
         define_macros = profile_macros)
 ]
 setup(
