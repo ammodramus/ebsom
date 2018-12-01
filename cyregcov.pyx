@@ -88,3 +88,4 @@ cdef class RegCov:
 
     def __dealloc__(self):
         free(self.X)
+        free(self.y)
