@@ -18,8 +18,8 @@ np.import_array()
 
 cdef class RegCov:
     def __init__(self, int ncol, int init_size = 10000, double growby = 1.5):
-        self.X = <float *>calloc(sizeof(float), ncol * init_size + ncol)
-        self.y = <uint32_t *>calloc(4*(init_size+1)*sizeof(uint32_t),4*(init_size+1))
+        self.X = <float *>calloc(ncol*init_size+ncol, sizeof(float))
+        self.y = <uint32_t *>calloc(4*(init_size+1), sizeof(uint32_t))
         if not self.X:
             raise MemoryError('could not allocate X')
         if not self.y:
