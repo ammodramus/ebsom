@@ -1,6 +1,5 @@
 from __future__ import division, print_function
 import argparse
-import tensorflow as tf
 import numpy as np
 import pysam
 from locuscollectors import NonCandidateCollector, CandidateCollector
@@ -20,6 +19,7 @@ import numpy.random as npr
 import deepdish as dd
 
 import time
+import mpi4py
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -35,8 +35,7 @@ def get_context_data(
         circular=True,
         onehot=False,
         max_context_size=100):
-    # note: position is 1-based. converting here to 0-based to work with array
-    position -= 1
+    # note: position is already 0-based
     conslen = len(cons)
     if position < 0 or position >= conslen:
         raise ValueError('cannot get context for position {}: invalid position'.format(
@@ -69,7 +68,7 @@ def get_context_data(
 
 
 
-def get_contamination(position, position_consensuses):
+def get_contamination(position_consensuses):
     forward_bases, forward_counts = np.unique(position_consensuses, return_counts=True)
     forward_fracs = forward_counts.astype(np.float64)/len(position_consensuses)
     forward_contam = np.zeros(4, dtype = np.float32)
@@ -133,32 +132,6 @@ num_bams = len(bam_fns)
 print('(loading data from deepdish for prototyping purposes)')
 all_counts, all_consensuses, all_majorminor = dd.io.load('debug_data.h5')
 
-nfreqs = 200
-freqs = bws.get_freqs(nfreqs)
-windows = bws.get_window_boundaries(nfreqs)
-logf = np.log(freqs)
-log1mf = np.log(1-freqs)
-
-ncols = 4
-ncols_const = 12 + len(bam_fns)
-hidden_layer_sizes = [20,20]
-
-# TODO figure out ncols and ncols_const ahead of time
-ll_aux = rt.get_ll_gradient_and_inputs(ncols, ncols_const, hidden_layer_sizes, nfreqs)
-init = tf.global_variables_initializer()
-
-num_pf_params = 3
-
-nparams = ll_aux[2].shape[0] + num_pf_params
-init_params = npr.normal(size = nparams)/10000
-
-
-import time
-
-example_positions = range(900,1000, 2)
-
-
-
 ##################################################################################
 
 all_loci = []
@@ -171,56 +144,171 @@ for ref in ref_names:
 all_loci = np.array(all_loci)
 
 
-sess = tf.Session()
-sess.run(init)
-
-
 def get_data(dataslice):
     ref, bamfn, position = dataslice
     bam = bams[bamfn]
     ref = bytes(ref)
-    position = int(position)
-    position_consensuses = [all_consensuses[ref][bamp][position] for bamp in all_consensuses[ref].keys()]
+    position_one = int(position)   # 0-based
+    position_zero = position_one-1
+    try:
+        position_consensuses = map(
+            lambda bamfn: all_consensuses[ref][bamfn][position_zero],
+            all_consensuses[ref].keys())
+    except:
+        print('bad position:', position_one)
     cons = all_consensuses[ref][bamfn]
-    major, minor = all_majorminor[ref][bamfn][position]
+    major, minor = all_majorminor[ref][bamfn][position_zero]
     reflen = len(cons)
     start = time.time()
     forward_data, reverse_data = cgcd.get_column_data(
-            bam,
-            ref,
-            reflen,
-            position,
-            args.min_bq,
-            args.min_mq,
-            args.context_length,
-            bytes(cons),
-            args.round_distance_by
-            )
+        bam, ref, reflen, position_zero, args.min_bq, args.min_mq,
+        args.context_length, bytes(cons), args.round_distance_by)
     dur = time.time()-start
     for_cov = forward_data.covariate_matrix().copy().astype(np.float32)
     for_obs = forward_data.observations().copy().astype(np.float32)
     rev_cov = reverse_data.covariate_matrix().copy().astype(np.float32)
     rev_obs = reverse_data.observations().copy().astype(np.float32)
 
-    forward_context, reverse_context = get_context_data(cons,position, args.context_length)
-    forward_contam, reverse_contam = get_contamination(position, position_consensuses)
+    forward_context, reverse_context = get_context_data(cons, position_zero,
+            args.context_length)
+    forward_contam, reverse_contam = get_contamination(position_consensuses)
 
     bam_data = get_bam_data(bamfn, bam_fns)
 
     forward_const_cov = np.concatenate((forward_context, forward_contam, bam_data))
     reverse_const_cov = np.concatenate((reverse_context, reverse_contam, bam_data))
-    return (for_cov, for_obs, rev_cov, rev_obs, forward_context,
-            reverse_context, forward_contam, reverse_contam, forward_const_cov,
-            reverse_const_cov, major, minor, position)
+    return (for_cov, for_obs, rev_cov, rev_obs, forward_const_cov,
+            reverse_const_cov, major, minor, position_one)
+
 
 size = comm.Get_size()
 
-splitdata = [el.tolist() for el in np.array_split(all_loci, size, axis = 0)]
+if rank == 0:
+    '''
+    import h5py
+    fout = h5py.File('test.h5', 'w')
+    data_group = fout.create_group('data')
+    indices_group = fout.create_group('meta')
+    # note that with gzip, compression level only slows down compression, not
+    # decompression
+    for_cov_data = data_group.create_dataset('for_cov', shape=(100000, 4),
+            dtype=np.float32, maxshape=(None,4),compression="gzip", compression_opts=9,
+            chunksize=(2000,4))
+    rev_cov_data = data_group.create_dataset('rev_cov', shape=(100000, 4),
+            dtype=np.float32, maxshape=(None,4),compression="gzip", compression_opts=9,
+            chunksize=(2000,4))
+    for_obs_data = data_group.create_dataset('for_obs', shape=(100000, 4),
+            dtype=np.uint16, maxshape=(None,4),compression="gzip", compression_opts=9,
+            chunksize=(2000,4))
+    rev_obs_data = data_group.create_dataset('rev_obs', shape=(100000, 4),
+            dtype=np.uint16, maxshape=(None,4),compression="gzip", compression_opts=9,
+            chunksize=(2000,4))
+    '''
+    import tables
+    h5file = tables.File('test.h5', 'w', title='test file')
+    comp = tables.Filters(complevel=9, complib='blosc')
+    data_group = h5file.create_group(h5file.root, 'data')
+    meta_group = h5file.create_group(h5file.root, 'meta')
 
-slicedata = comm.scatter(splitdata, root = 0)
+    # read data
+    for_cov_data = tables.EArray(h5file.root.data, 'for_cov',
+                                 tables.Atom.from_dtype(np.dtype(np.float32)),
+                                 shape=(0,4), filters=comp)
+    rev_cov_data = tables.EArray(h5file.root.data, 'rev_cov',
+                                 tables.Atom.from_dtype(np.dtype(np.float32)),
+                                 shape=(0,4), filters=comp)
+    for_obs_data = tables.EArray(h5file.root.data, 'for_obs',
+                                 tables.Atom.from_dtype(np.dtype(np.uint16)),
+                                 shape=(0,4), filters=comp)
+    rev_obs_data = tables.EArray(h5file.root.data, 'rev_obs',
+                                 tables.Atom.from_dtype(np.dtype(np.uint16)),
+                                 shape=(0,4), filters=comp)
 
-proc_data = [get_data(slicedata[i]) for i in range(1000)]
+    #               context            contam.       bam
+    ncols_const = 4*args.context_length + 4 + len(bam_fns)
 
-all_data = comm.gather(proc_data, root = 0)
+    # meta (position) data
+    '''
+    each position has:
+        - identifier information:
+            - reference name (Enum)
+            - bam name (Enum)
+            - position (uint64)
+            - unique identifier (uint64)
+        - major
+        - minor
+        - forward start index (for for_cov and for_obs, uint64)
+        - forward end index (for for_cov and for_obs, uint64)
+        - reverse start index (for rev_cov and rev_obs, uint64)
+        - reverse end index (for rev_cov and rev_obs, uint64)
+        - site covariates (float32, each)
+    '''
 
-print(all_data)
+    ref_names_enum = tables.Enum(ref_names)
+    bam_fns_enum = tables.Enum(bam_fns)
+
+    class SiteMetadata(tables.IsDescription):
+        reference = tables.EnumCol(ref_names_enum, ref_names[0], base='uint8')
+        bam = tables.EnumCol(bam_fns_enum, bam_fns[0], base='uint8')
+        position = tables.UInt64Col()
+        idnumber = tables.UInt64Col()
+        major = tables.StringCol(1)
+        minor = tables.StringCol(1)
+        forward_start = tables.UInt64Col()
+        forward_end = tables.UInt64Col()
+        reverse_start = tables.UInt64Col()
+        reverse_end = tables.UInt64Col()
+        forward_const_cov = tables.Float32Col(shape=(ncols_const,))
+        reverse_const_cov = tables.Float32Col(shape=(ncols_const,))
+
+    meta_table = h5file.create_table(meta_group, 'metadata', SiteMetadata,
+                                     'Per-site metadata')
+    meta_row = meta_table.row
+
+
+    # each position has forward start position, forward end position (non-inclusive), 
+
+
+
+
+cur_id_number = 0
+chunk_size = 200
+for i in range(0, all_loci.shape[0], chunk_size):
+    chunk = all_loci[i:i+chunk_size,:]
+    split_chunk = np.array_split(chunk, size)
+    slicedata = comm.scatter(split_chunk, root = 0)
+
+    proc_data = []
+    for sl in slicedata:
+        proc_data.append(get_data(sl))
+
+    chunk_data = comm.gather(proc_data, root = 0)
+    if rank == 0:
+        chunk_data = reduce(lambda x,y: list(x)+list(y), chunk_data)
+        for chunkp, chunk_dat in zip(chunk, chunk_data):
+            (for_cov, for_obs, rev_cov, rev_obs, forward_const_cov,
+             reverse_const_cov, major, minor, position_one) = chunk_dat
+
+            ref, bamfn, position = chunkp
+            meta_row['reference'] = ref_names_enum[ref]
+            meta_row['bam'] = bam_fns_enum[bamfn]
+            meta_row['position'] = position_one
+            meta_row['idnumber'] = cur_id_number; cur_id_number += 1
+            meta_row['major'] = major[0]
+            meta_row['minor'] = minor[0]
+            meta_row['forward_start'] = for_cov_data.shape[0]
+            meta_row['forward_end'] = for_cov_data.shape[0] + for_cov.shape[0]
+            meta_row['reverse_start'] = rev_cov_data.shape[0]
+            meta_row['reverse_end'] = rev_cov_data.shape[0] + rev_cov.shape[0]
+            meta_row['forward_const_cov'] = forward_const_cov
+            meta_row['reverse_const_cov'] = reverse_const_cov
+            meta_row.append()
+
+            assert for_cov.shape[0] == for_obs.shape[0]
+            assert rev_cov.shape[0] == rev_obs.shape[0]
+
+            for_cov_data.append(for_cov)
+            rev_cov_data.append(rev_cov)
+            for_obs_data.append(for_obs)
+            rev_obs_data.append(rev_obs)
+        print(chunk[0])
