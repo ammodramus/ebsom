@@ -127,21 +127,21 @@ ref_names = ut.get_ref_names(args.references, bams)
 
 num_bams = len(bam_fns)
 
-#print('getting counts')
-#all_counts = ut.get_all_counts(bams, ref_names, min_bq)
-#print('getting consensus')
-#all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = args.min_coverage)
-#print('getting major-minor')
-#all_majorminor = ut.get_all_majorminor(all_counts)
+print('getting counts')
+all_counts = ut.get_all_counts(bams, ref_names, min_bq)
+print('getting consensus')
+all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = args.min_coverage)
+print('getting major-minor')
+all_majorminor = ut.get_all_majorminor(all_counts)
 
-#savedat = (all_counts, all_consensuses, all_majorminor)
-#dd.io.save('debug_data.h5', savedat)
+savedat = (all_counts, all_consensuses, all_majorminor)
+dd.io.save('debug_data.h5', savedat)
 
 ##################################################################################
 # for debugging only
 ###################################
-print('(loading data from deepdish for prototyping purposes)')
-all_counts, all_consensuses, all_majorminor = dd.io.load('debug_data.h5')
+#print('(loading data from deepdish for prototyping purposes)')
+#all_counts, all_consensuses, all_majorminor = dd.io.load('debug_data.h5')
 
 nfreqs = 200
 freqs = bws.get_freqs(nfreqs)
