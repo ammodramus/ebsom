@@ -57,10 +57,10 @@ def get_context_data(
     if onehot:
         raise NotImplementedError('onehot not yet implemented')
     else:
-        forward_context = np.zeros(4*context_len, dtype = np.float32)
+        forward_context = np.zeros(4*context_len, dtype=np.float32)
         for i in xrange(context_len):
             forward_context[i*4+'ACGT'.index(forward_context_bases[i])] = 1
-        reverse_context = np.zeros(4*context_len, dtype = np.float32)
+        reverse_context = np.zeros(4*context_len, dtype=np.float32)
         for i in xrange(context_len):
             reverse_context[i*4+'ACGT'.index(reverse_context_bases[i])] = 1
 
@@ -69,9 +69,10 @@ def get_context_data(
 
 
 def get_contamination(position_consensuses):
-    forward_bases, forward_counts = np.unique(position_consensuses, return_counts=True)
+    forward_bases, forward_counts = np.unique(position_consensuses,
+                                              return_counts=True)
     forward_fracs = forward_counts.astype(np.float64)/len(position_consensuses)
-    forward_contam = np.zeros(4, dtype = np.float32)
+    forward_contam = np.zeros(4, dtype=np.float32)
     for base, frac in zip(forward_bases, forward_fracs):
         forward_contam['ACGT'.index(base)] = frac
     reverse_contam = forward_contam[::-1].copy()
@@ -79,7 +80,7 @@ def get_contamination(position_consensuses):
 
 
 def get_bam_data(bam_fn, all_bam_fns):
-    bam_data = np.zeros(len(all_bam_fns), dtype = np.float32)
+    bam_data = np.zeros(len(all_bam_fns), dtype=np.float32)
     bam_data[all_bam_fns.index(bam_fn)] = 1.0
     return bam_data
 
@@ -90,21 +91,23 @@ desc = 'jointly infer sequencing error profiles and polymorphisms'
 parser = argparse.ArgumentParser(
         description=desc,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('bams', help = 'file containing list of bam files')
+parser.add_argument('bams', help='file containing list of bam files')
 parser.add_argument('references',
         help = 'name of file containing list of reference sequence names, or '
                'comma-separated list of reference sequence names')
-parser.add_argument('--min-bq', help = 'minimum base quality',
-        type = ut.positive_int, default = 20)
-parser.add_argument('--min-mq', help = 'minimum mapping quality',
-        type = ut.positive_int, default = 20)
-parser.add_argument('--context-length', type = ut.nonneg_int, default = 2,
-        help = 'number of preceding bases to use as covariate')
+parser.add_argument('--min-bq', help='minimum base quality',
+        type = ut.positive_int, default=20)
+parser.add_argument('--min-mq', help='minimum mapping quality',
+        type=ut.positive_int, default=20)
+parser.add_argument('--context-length', type=ut.nonneg_int, default=2,
+        help='number of preceding bases to use as covariate')
 parser.add_argument('--round-distance-by',
-        type = ut.positive_int, default = 1,
-        help = 'round distance from start of read by this amount. larger '
-               'numbers make for more compression in the data, faster '
-               'likelihood evaluations.')
+        type=ut.positive_int, default=1,
+        help='round distance from start of read by this amount. larger '
+             'numbers make for more compression in the data, faster '
+             'likelihood evaluations.')
+parser.add_argument('--min-coverage', type=int, default=20,
+                    help="minimum coverage for getting consensus")
 args = parser.parse_args()
 min_bq = args.min_bq
 min_mq = args.min_mq
@@ -116,12 +119,23 @@ ref_names = ut.get_ref_names(args.references, bams)
 
 num_bams = len(bam_fns)
 
-#print('getting counts')
-#all_counts = ut.get_all_counts(bams, ref_names, min_bq)
-#print('getting consensus')
-#all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = args.min_coverage)
-#print('getting major-minor')
-#all_majorminor = ut.get_all_majorminor(all_counts)
+all_counts = None
+all_consensuses = None
+all_majorminor = None
+if rank == 0:
+    print('getting counts')
+    all_counts = ut.get_all_counts(bams, ref_names, min_bq)
+    print('getting consensus')
+    all_consensuses = ut.get_all_consensuses(all_counts, min_coverage=args.min_coverage)
+    print('getting major-minor')
+    all_majorminor = ut.get_all_majorminor(all_counts)
+else:
+    all_counts = None
+    all_consensuses = None
+    all_majorminor = None
+all_counts = comm.bcast(all_counts, root=0)
+all_consensuses = comm.bcast(all_consensuses, root=0)
+all_majorminor = comm.bcast(all_majorminor, root=0)
 
 #savedat = (all_counts, all_consensuses, all_majorminor)
 #dd.io.save('debug_data.h5', savedat)
@@ -129,8 +143,8 @@ num_bams = len(bam_fns)
 ##################################################################################
 # for debugging only
 ###################################
-print('(loading data from deepdish for prototyping purposes)')
-all_counts, all_consensuses, all_majorminor = dd.io.load('debug_data.h5')
+#print('(loading data from deepdish for prototyping purposes)')
+#all_counts, all_consensuses, all_majorminor = dd.io.load('debug_data.h5')
 
 ##################################################################################
 
@@ -276,13 +290,13 @@ chunk_size = 200
 for i in range(0, all_loci.shape[0], chunk_size):
     chunk = all_loci[i:i+chunk_size,:]
     split_chunk = np.array_split(chunk, size)
-    slicedata = comm.scatter(split_chunk, root = 0)
+    slicedata = comm.scatter(split_chunk, root=0)
 
     proc_data = []
     for sl in slicedata:
         proc_data.append(get_data(sl))
 
-    chunk_data = comm.gather(proc_data, root = 0)
+    chunk_data = comm.gather(proc_data, root=0)
     if rank == 0:
         chunk_data = reduce(lambda x,y: list(x)+list(y), chunk_data)
         for chunkp, chunk_dat in zip(chunk, chunk_data):
