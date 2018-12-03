@@ -95,6 +95,7 @@ parser.add_argument('bams', help='file containing list of bam files')
 parser.add_argument('references',
         help = 'name of file containing list of reference sequence names, or '
                'comma-separated list of reference sequence names')
+parser.add_argument('output', help='pytables HDF5 output filename')
 parser.add_argument('--min-bq', help='minimum base quality',
         type = ut.positive_int, default=20)
 parser.add_argument('--min-mq', help='minimum mapping quality',
@@ -219,7 +220,7 @@ if rank == 0:
             chunksize=(2000,4))
     '''
     import tables
-    h5file = tables.File('test.h5', 'w', title='test file')
+    h5file = tables.File(args.output, 'w', title='test file')
     comp = tables.Filters(complevel=9, complib='blosc')
     data_group = h5file.create_group(h5file.root, 'data')
     meta_group = h5file.create_group(h5file.root, 'meta')
