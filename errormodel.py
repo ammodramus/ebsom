@@ -426,13 +426,21 @@ class ErrorModel(object):
         reverse_data = self.rev_cov[reverse_start:reverse_end]
         forward_obs = self.for_obs[forward_start:forward_end]
         reverse_obs = self.rev_obs[reverse_start:reverse_end]
+
+        # TODO maybe make function to normalize data
         forward_const_no_bam = meta_row[self.meta_cols['forward_const_cov']]
         reverse_const_no_bam = meta_row[self.meta_cols['reverse_const_cov']]
+        fcnb_normed = ((forward_const_no_bam-self.const_cov_means)
+                       / self.const_cov_stds)
+        rcnb_normed = ((reverse_const_no_bam-self.const_cov_means)
+                       / self.const_cov_stds)
 
+        # getting the (normalized) bam one-hot encoding
         bam_cov = self.bam_mins.copy()
         bam_cov[bam_idx] = self.bam_maxes[bam_idx]
-        forward_const = np.concatenate((forward_const_no_bam, bam_cov))
-        reverse_const = np.concatenate((reverse_const_no_bam, bam_cov))
+
+        forward_const = np.concatenate((fcnb_normed, bam_cov))
+        reverse_const = np.concatenate((rcnb_normed, bam_cov))
 
         major = meta_row[self.meta_cols['major']]
         minor = meta_row[self.meta_cols['minor']]
