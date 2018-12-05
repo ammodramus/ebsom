@@ -378,8 +378,11 @@ class ErrorModel(object):
         self.conc_factor = conc_factor
         self.num_pf_params = num_pf_params
 
+        self.const_cov_means = self.metadata.attrs.const_cov_means
+        self.const_cov_stds = self.metadata.attrs.const_cov_stds
         for_cov = self.data.root.data.for_cov
-        self.const_cov_means = for_cov.attrs.const_cov_means
+        self.read_cov_means = for_cov.attrs.read_cov_means
+        self.read_cov_stds = for_cov.attrs.read_cov_stds
         rev_cov = self.data.root.data.rev_cov
         assert np.all(self.const_cov_means == rev_cov.attrs.const_cov_means)
         self.const_cov_stds = for_cov.attrs.const_cov_stds
