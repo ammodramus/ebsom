@@ -378,6 +378,11 @@ class ErrorModel(object):
         self.conc_factor = conc_factor
         self.num_pf_params = num_pf_params
 
+        for_cov = self.data.root.data.for_cov
+        self.const_cov_means = for_cov.attrs.const_cov_means
+        rev_cov = self.data.root.data.rev_cov
+        assert np.all(self.const_cov_means == rev_cov.attrs.const_cov_means)
+
         self.bam_counts = self.metadata.attrs.bam_counts
         self.num_bams = len(self.bam_counts)
         bam_means = self.bam_counts / np.sum(self.bam_counts)
