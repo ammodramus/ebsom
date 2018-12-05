@@ -382,6 +382,8 @@ class ErrorModel(object):
         self.const_cov_means = for_cov.attrs.const_cov_means
         rev_cov = self.data.root.data.rev_cov
         assert np.all(self.const_cov_means == rev_cov.attrs.const_cov_means)
+        self.const_cov_stds = for_cov.attrs.const_cov_stds
+        assert np.all(self.const_cov_stds == rev_cov.attrs.const_cov_stds)
 
         self.bam_counts = self.metadata.attrs.bam_counts
         self.num_bams = len(self.bam_counts)
@@ -435,10 +437,12 @@ class ErrorModel(object):
         # TODO maybe make function to normalize data
         forward_const_no_bam = meta_row[self.meta_cols['forward_const_cov']]
         reverse_const_no_bam = meta_row[self.meta_cols['reverse_const_cov']]
-        fcnb_normed = ((forward_const_no_bam-self.const_cov_means)
-                       / self.const_cov_stds)
-        rcnb_normed = ((reverse_const_no_bam-self.const_cov_means)
-                       / self.const_cov_stds)
+        fcnb_normed = (
+            (forward_const_no_bam-self.const_cov_means[np.newaxis,:])
+                       / self.const_cov_stds[np.newaxis,:])
+        rcnb_normed = (
+            (reverse_const_no_bam-self.const_cov_means[np.newaxis,:])
+                    / self.const_cov_stds[np.newaxis,:])
 
         # getting the (normalized) bam one-hot encoding
         bam_cov = self.bam_mins.copy()
