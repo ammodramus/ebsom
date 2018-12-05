@@ -8,7 +8,7 @@ import numpy.random as npr
 import tensorflow as tf
 import tables
 from scipy.special import logsumexp
-from tensorflow.train import GradientDescentOptimizer
+import tensorflow.train
 
 import beta_with_spikes_integrated as bws
 import errormodel
@@ -50,7 +50,9 @@ ret_type = (tf.string, tf.string, tf.int64)
 
 sess = tf.Session()
 
-opt = GradientDescentOptimizer(0.001, use_locking=False)
+#opt = tensorflow.train.GradientDescentOptimizer(0.0000000001,
+#                                                use_locking=False)
+opt = tensorflow.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
 global_step = tf.train.get_or_create_global_step()
 
 try:
@@ -58,6 +60,11 @@ try:
     err_mod = errormodel.ErrorModel(dat, args.hidden_layer_sizes,
                                     args.num_freqs, args.concentration_factor,
                                     num_pf_params, sess)
+    params_tf = err_mod.ll_aux[2]
+    grads_tf = tf.placeholder(shape=params_tf.shape, dtype=tf.float32)
+    apply_grads = opt.apply_gradients([(grads_tf, params_tf)], global_step)
+
+    sess.run(tf.global_variables_initializer())
 
     for epoch in xrange(args.numepochs):
         gen = lambda: bam_ref_pos_generator(err_mod)
@@ -78,19 +85,19 @@ try:
             tot_ll = 0.0
             tot_grads = 0.0
             for bam, ref, pos in izip(batch_bams, batch_refs, batch_positions):
-                ll, grads = err_mod.loglike_and_gradient(params, bam, ref, pos)
+                ll, grads = err_mod.loglike_and_gradient(bam, ref, pos)
+                ll_target = -1.0*ll
+                grads_target = -1.0*grads
                 tot_ll += ll
                 tot_grads += grads
+            tot_grads /= args.batch_size   # normalize gradient by batch size
             dur = time.time()-start
-            print('took {} seconds for batch {}'.format(dur, batch_idx))
-
-            #opt.apply_gradients(zip(tot_grads, 
+            print('batch {}'.format(batch_idx))
+            print('before:', sess.run(params_tf))
+            sess.run(apply_grads, feed_dict = {grads_tf: grads_target})
+            print('after:', sess.run(params_tf))
 
             batch_idx += 1
 
-
-
-except KeyboardInterrupt:
-    import pdb; pdb.set_trace()
 finally:
     dat.close()
