@@ -384,9 +384,6 @@ class ErrorModel(object):
         self.read_cov_means = for_cov.attrs.read_cov_means
         self.read_cov_stds = for_cov.attrs.read_cov_stds
         rev_cov = self.data.root.data.rev_cov
-        assert np.all(self.const_cov_means == rev_cov.attrs.const_cov_means)
-        self.const_cov_stds = for_cov.attrs.const_cov_stds
-        assert np.all(self.const_cov_stds == rev_cov.attrs.const_cov_stds)
 
         self.bam_counts = self.metadata.attrs.bam_counts
         self.num_bams = len(self.bam_counts)
