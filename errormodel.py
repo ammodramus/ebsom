@@ -421,8 +421,8 @@ class ErrorModel(object):
     def loglike_and_gradient(self, bam, ref, pos):
         start = time.time()
 
-        bam_idx = self.bam_enum_values[bam]
-        ref_idx = self.ref_enum_values[ref]
+        bam_idx = self.bam_enum_values[unicode(bam)]
+        ref_idx = self.ref_enum_values[unicode(ref)]
         key = (bam_idx, ref_idx, pos)
         meta_row = self.metadata_np[self.row_dict[key]]
         forward_start = meta_row[self.meta_cols['forward_start']]

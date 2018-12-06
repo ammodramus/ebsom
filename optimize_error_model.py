@@ -1,7 +1,6 @@
 from __future__ import division, print_function
 import re
 import argparse
-from itertools import izip
 import os.path
 import glob
 
@@ -10,7 +9,7 @@ import numpy.random as npr
 import tensorflow as tf
 import tables
 from scipy.special import logsumexp
-import tensorflow.train
+#import tensorflow.train
 
 import beta_with_spikes_integrated as bws
 import errormodel
@@ -56,7 +55,7 @@ sess = tf.Session()
 #                                                use_locking=False)
 #opt = tensorflow.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
 #opt = tensorflow.train.AdamOptimizer()
-opt = tensorflow.train.RMSPropOptimizer(0.01)
+opt = tf.train.RMSPropOptimizer(0.01)
 global_step = tf.train.get_or_create_global_step()
 
 try:
@@ -82,7 +81,7 @@ try:
         tot_ll_tf = tf.placeholder(shape = (), dtype=tf.float32)
         tot_ll_tf_summary = tf.summary.scalar('tot_ll', tot_ll_tf)
 
-    with tf.name_space('saver'):
+    with tf.name_scope('saver'):
         saver = tf.train.Saver()
 
     summaries_tf = tf.summary.merge_all()
@@ -101,7 +100,7 @@ try:
     sess.run(tf.global_variables_initializer())
 
 
-    for epoch in xrange(args.numepochs):
+    for epoch in range(args.numepochs):
         gen = lambda: bam_ref_pos_generator(err_mod)
 
         dataset = tf.data.Dataset.from_generator(
@@ -116,10 +115,9 @@ try:
             except tf.errors.OutOfRangeError:
                 break
 
-            import time; start = time.time()
             tot_ll = 0.0
             tot_grads = 0.0
-            for bam, ref, pos in izip(batch_bams, batch_refs, batch_positions):
+            for bam, ref, pos in zip(batch_bams, batch_refs, batch_positions):
                 ll, grads = err_mod.loglike_and_gradient(bam, ref, pos)
                 ll_maximize = -1.0*ll
                 grads_maximize = -1.0*grads
@@ -127,7 +125,6 @@ try:
                 tot_grads += grads
             tot_grads /= args.batch_size   # normalize gradient by batch size
             ll_per_locus = tot_ll / args.batch_size
-            dur = time.time()-start
             sess.run(apply_grads, feed_dict={grads_tf:grads_maximize})
             summ = sess.run(summaries_tf, feed_dict={grads_tf:grads_maximize,
                                               tot_ll_tf:ll_per_locus})
