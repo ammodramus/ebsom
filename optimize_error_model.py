@@ -52,7 +52,8 @@ sess = tf.Session()
 
 #opt = tensorflow.train.GradientDescentOptimizer(0.0000000001,
 #                                                use_locking=False)
-opt = tensorflow.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
+#opt = tensorflow.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
+opt = tensorflow.train.AdamOptimizer()
 global_step = tf.train.get_or_create_global_step()
 
 try:
@@ -92,10 +93,10 @@ try:
                 tot_grads += grads
             tot_grads /= args.batch_size   # normalize gradient by batch size
             dur = time.time()-start
-            print('batch {}'.format(batch_idx))
-            print('before:', sess.run(params_tf))
             sess.run(apply_grads, feed_dict = {grads_tf: grads_target})
-            print('after:', sess.run(params_tf))
+            print('batch {} params:'.format(batch_idx), sess.run(params_tf))
+            print('batch {} grads:'.format(batch_idx), grads_target)
+            print()
 
             batch_idx += 1
 
