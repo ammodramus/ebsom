@@ -2,6 +2,8 @@ from __future__ import division, print_function
 import re
 import argparse
 from itertools import izip
+import os.path
+import glob
 
 import numpy as np
 import numpy.random as npr
@@ -53,7 +55,8 @@ sess = tf.Session()
 #opt = tensorflow.train.GradientDescentOptimizer(0.0000000001,
 #                                                use_locking=False)
 #opt = tensorflow.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
-opt = tensorflow.train.AdamOptimizer()
+#opt = tensorflow.train.AdamOptimizer()
+opt = tensorflow.train.RMSPropOptimizer(0.01)
 global_step = tf.train.get_or_create_global_step()
 
 try:
@@ -65,7 +68,38 @@ try:
     grads_tf = tf.placeholder(shape=params_tf.shape, dtype=tf.float32)
     apply_grads = opt.apply_gradients([(grads_tf, params_tf)], global_step)
 
+    # register summaries
+    with tf.name_scope('pf_pars'):
+        pf_param_0_tf = tf.summary.scalar('pfpar0', params_tf[0])
+        pf_param_1_tf = tf.summary.scalar('pfpar1', params_tf[1])
+        pf_param_2_tf = tf.summary.scalar('pfpar2', params_tf[2])
+    with tf.name_scope('pf_par_grads'):
+        pf_param_0_grad_tf = tf.summary.scalar('pfpar0grad', grads_tf[0])
+        pf_param_1_grad_tf = tf.summary.scalar('pfpar1grad', grads_tf[1])
+        pf_param_2_grad_tf = tf.summary.scalar('pfpar2grad', grads_tf[2])
+
+    with tf.name_scope('ll'):
+        tot_ll_tf = tf.placeholder(shape = (), dtype=tf.float32)
+        tot_ll_tf_summary = tf.summary.scalar('tot_ll', tot_ll_tf)
+
+    with tf.name_space('saver'):
+        saver = tf.train.Saver()
+
+    summaries_tf = tf.summary.merge_all()
+
+    with tf.name_scope('filewriter'):
+        prev_runs = glob.glob('summaries/*')
+        if len(prev_runs) == 0:
+            this_run = 1
+        else:
+            prev_run_idx = max(
+                [int(rundir.split('n')[1]) for rundir in prev_runs])
+            this_run = prev_run_idx + 1
+        this_rundir = 'summaries/run{:03d}'.format(this_run)
+        writer = tf.summary.FileWriter(this_rundir, sess.graph)
+
     sess.run(tf.global_variables_initializer())
+
 
     for epoch in xrange(args.numepochs):
         gen = lambda: bam_ref_pos_generator(err_mod)
@@ -87,18 +121,24 @@ try:
             tot_grads = 0.0
             for bam, ref, pos in izip(batch_bams, batch_refs, batch_positions):
                 ll, grads = err_mod.loglike_and_gradient(bam, ref, pos)
-                ll_target = -1.0*ll
-                grads_target = -1.0*grads
+                ll_maximize = -1.0*ll
+                grads_maximize = -1.0*grads
                 tot_ll += ll
                 tot_grads += grads
             tot_grads /= args.batch_size   # normalize gradient by batch size
+            ll_per_locus = tot_ll / args.batch_size
             dur = time.time()-start
-            sess.run(apply_grads, feed_dict = {grads_tf: grads_target})
+            sess.run(apply_grads, feed_dict={grads_tf:grads_maximize})
+            summ = sess.run(summaries_tf, feed_dict={grads_tf:grads_maximize,
+                                              tot_ll_tf:ll_per_locus})
+            writer.add_summary(summ, batch_idx)
             print('batch {} params:'.format(batch_idx), sess.run(params_tf))
-            print('batch {} grads:'.format(batch_idx), grads_target)
+            print('batch {} grads:'.format(batch_idx), grads_maximize)
             print()
 
             batch_idx += 1
+            if batch_idx % 100 == 0:
+                saver.save(sess, 'model_checkout.ckpt')
 
 finally:
     dat.close()
