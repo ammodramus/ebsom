@@ -434,15 +434,23 @@ class ErrorModel(object):
         forward_obs = self.for_obs[forward_start:forward_end]
         reverse_obs = self.rev_obs[reverse_start:reverse_end]
 
+
+        forward_data = self.for_cov[forward_start:forward_end]
+        forward_data_normed = ((forward_data-self.read_cov_means[np.newaxis,:])
+                               /self.read_cov_stds[np.newaxis,:])
+        reverse_data = self.rev_cov[reverse_start:reverse_end]
+        reverse_data_normed = ((reverse_data-self.read_cov_means[np.newaxis,:])
+                               /self.read_cov_stds[np.newaxis,:])
+
         # TODO maybe make function to normalize data
         forward_const_no_bam = meta_row[self.meta_cols['forward_const_cov']]
         reverse_const_no_bam = meta_row[self.meta_cols['reverse_const_cov']]
         fcnb_normed = (
-            (forward_const_no_bam-self.const_cov_means[np.newaxis,:])
-                       / self.const_cov_stds[np.newaxis,:])
+            (forward_const_no_bam-self.const_cov_means)
+                       / self.const_cov_stds)
         rcnb_normed = (
-            (reverse_const_no_bam-self.const_cov_means[np.newaxis,:])
-                    / self.const_cov_stds[np.newaxis,:])
+            (reverse_const_no_bam-self.const_cov_means)
+                    / self.const_cov_stds)
 
         # getting the (normalized) bam one-hot encoding
         bam_cov = self.bam_mins.copy()
@@ -458,13 +466,14 @@ class ErrorModel(object):
         self.time_retrieving_data += dur
 
         start = time.time()
-        val = loglike_and_gradient_wrapper(forward_data, reverse_data,
-                                            forward_const, reverse_const,
-                                            forward_obs, reverse_obs, major,
-                                            minor, self.num_pf_params,
-                                            self.logf, self.log1mf, self.freqs,
-                                            self.windows, self.ll_aux,
-                                            self.sess)
+        val = loglike_and_gradient_wrapper(forward_data_normed,
+                                           reverse_data_normed, forward_const,
+                                           reverse_const, forward_obs,
+                                           reverse_obs, major, minor,
+                                           self.num_pf_params, self.logf,
+                                           self.log1mf, self.freqs,
+                                           self.windows, self.ll_aux,
+                                           self.sess)
         dur = time.time()-start
         self.time_calculating_grads += dur
 
