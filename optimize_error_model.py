@@ -10,7 +10,7 @@ import numpy.random as npr
 import tensorflow as tf
 import tables
 from scipy.special import logsumexp
-import tensorflow.train
+#import tensorflow.train
 
 import beta_with_spikes_integrated as bws
 import errormodel
@@ -32,6 +32,7 @@ parser.add_argument('--concentration-factor', type=float, default=10,
 parser.add_argument('--batch-size', type=int, default=100,
                     help='number of base-pair positions to process for each '
                          'batch')
+parser.add_argument('--learning-rate', type=float, default=0.01)
 #parser.add_argument('--do-not-remove-nonvariable', action='store_true')
 args = parser.parse_args()
 
@@ -52,11 +53,11 @@ ret_type = (tf.string, tf.string, tf.int64)
 
 sess = tf.Session()
 
-#opt = tensorflow.train.GradientDescentOptimizer(0.0000000001,
+#opt = tf.train.GradientDescentOptimizer(0.0000000001,
 #                                                use_locking=False)
-#opt = tensorflow.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
-#opt = tensorflow.train.AdamOptimizer()
-opt = tensorflow.train.RMSPropOptimizer(0.01)
+#opt = tf.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
+#opt = tf.train.AdamOptimizer()
+opt = tf.train.RMSPropOptimizer(args.learning_rate)
 global_step = tf.train.get_or_create_global_step()
 
 try:
@@ -82,7 +83,7 @@ try:
         tot_ll_tf = tf.placeholder(shape = (), dtype=tf.float32)
         tot_ll_tf_summary = tf.summary.scalar('tot_ll', tot_ll_tf)
 
-    with tf.name_space('saver'):
+    with tf.name_scope('saver'):
         saver = tf.train.Saver()
 
     summaries_tf = tf.summary.merge_all()
@@ -101,6 +102,7 @@ try:
     sess.run(tf.global_variables_initializer())
 
 
+    global_batch_idx = 0
     for epoch in xrange(args.numepochs):
         gen = lambda: bam_ref_pos_generator(err_mod)
 
@@ -109,7 +111,6 @@ try:
         it = dataset.make_initializable_iterator()
         next_data = it.get_next()
         sess.run(it.initializer)
-        batch_idx = 0
         while True:
             try:
                 batch_bams, batch_refs, batch_positions = sess.run(next_data)
@@ -131,14 +132,14 @@ try:
             sess.run(apply_grads, feed_dict={grads_tf:grads_maximize})
             summ = sess.run(summaries_tf, feed_dict={grads_tf:grads_maximize,
                                               tot_ll_tf:ll_per_locus})
-            writer.add_summary(summ, batch_idx)
-            print('batch {} params:'.format(batch_idx), sess.run(params_tf))
-            print('batch {} grads:'.format(batch_idx), grads_maximize)
+            writer.add_summary(summ, global_batch_idx)
+            print('batch {} params:'.format(global_batch_idx), sess.run(params_tf))
+            print('batch {} grads:'.format(global_batch_idx), grads_maximize)
             print()
 
-            batch_idx += 1
-            if batch_idx % 100 == 0:
-                saver.save(sess, 'model_checkout.ckpt')
+            global_batch_idx += 1
+            if global_batch_idx % 100 == 0:
+                saver.save(sess, './model_checkout.ckpt')
 
 finally:
     dat.close()
