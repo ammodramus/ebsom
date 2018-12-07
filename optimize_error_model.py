@@ -60,10 +60,6 @@ ret_type = (tf.string, tf.string, tf.int64)
 
 sess = tf.Session()
 
-#opt = tf.train.GradientDescentOptimizer(0.0000000001,
-#                                                use_locking=False)
-#opt = tf.train.AdadeltaOptimizer(learning_rate=0.001, rho=0.95)
-#opt = tf.train.AdamOptimizer()
 opt = tf.train.RMSPropOptimizer(args.learning_rate)
 global_step = tf.train.get_or_create_global_step()
 
@@ -150,17 +146,18 @@ try:
 
             import time; start = time.time()
             tot_ll = 0.0
-            tot_grads = 0.0
+            tot_grads_maximize = 0.0
             for bam, ref, pos in izip(batch_bams, batch_refs, batch_positions):
                 ll, grads = err_mod.loglike_and_gradient(bam, ref, pos)
                 ll_maximize = -1.0*ll
                 grads_maximize = -1.0*grads
                 tot_ll += ll
-                tot_grads += grads
-            tot_grads /= args.batch_size   # normalize gradient by batch size
+                tot_grads_maximize += grads_maximize
+            # normalize gradient by batch size
+            tot_grads_maximize /= args.batch_size
             ll_per_locus = tot_ll / args.batch_size
             dur = time.time()-start
-            sess.run(apply_grads, feed_dict={grads_tf:grads_maximize})
+            sess.run(apply_grads, feed_dict={grads_tf:tot_grads_maximize})
 
             pf_params = sess.run(params_tf[:num_pf_params])
             probnonzero = 1 - np.exp(bws.get_lpf(pf_params, freqs, windows)[0])
