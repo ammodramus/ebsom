@@ -340,6 +340,7 @@ def loglike_and_gradient_wrapper(forward_cov, reverse_cov,
             #dpfs = (dpfs0+dpfs1)/2.0
             dpfs = dpfs0
             '''
+
             pf_pars[i] += eps  # inc by eps
             lpf2 = bws.get_lpf(pf_pars,freqs,windows)
             pf_pars[i] -= eps  # fix the eps
@@ -356,9 +357,12 @@ def loglike_and_gradient_wrapper(forward_cov, reverse_cov,
 
             dpfs = (dpfs0+dpfs1)/2.0
             
+            # Eventually parameters may get to -inf logP(f), which causes NaN
+            # in gradient. They should be zero, so setting here.
+            dpfs[~np.isfinite(lpf_np)] = 0.0
+            
             filt = dpfs >= 0
             if np.any(filt):
-                # Probably not any faster to use numexpr here
                 pos_log = (logsumexp(np.log(np.abs(dpfs[filt]))
                                      + b_sums[filt]) - ll)
             else:
