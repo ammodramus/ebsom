@@ -323,13 +323,39 @@ def loglike_and_gradient_wrapper(forward_cov, reverse_cov,
         grads[:] = all_grads
 
         # Calculate gradient for pf_params
-        eps = 1e-7
+        eps = 1e-5
         pf = np.exp(lpf_np)
         for i in range(num_pf_params):
+            '''
             pf_pars[i] += eps  # inc by eps
             pf2 = np.exp(bws.get_lpf(pf_pars,freqs,windows))
             pf_pars[i] -= eps  # fix the eps
-            dpfs = (pf2-pf)/eps
+            
+            pf_pars[i] -= eps  # decrement by eps
+            pf3 = np.exp(bws.get_lpf(pf_pars,freqs,windows))
+            pf_pars[i] += eps  # fix the eps
+
+            dpfs0 = (pf2-pf)/eps
+            dpfs1 = (pf-pf3)/eps
+            #dpfs = (dpfs0+dpfs1)/2.0
+            dpfs = dpfs0
+            '''
+            pf_pars[i] += eps  # inc by eps
+            lpf2 = bws.get_lpf(pf_pars,freqs,windows)
+            pf_pars[i] -= eps  # fix the eps
+
+            dlogpf0 = (lpf2-lpf_np)/eps
+            dpfs0 = dlogpf0*pf
+
+            pf_pars[i] -= eps  # decrement by eps
+            lpf3 = bws.get_lpf(pf_pars,freqs,windows)
+            pf_pars[i] += eps  # fix the eps
+
+            dlogpf1 = (lpf_np-lpf3)/eps
+            dpfs1 = dlogpf1*pf
+
+            dpfs = (dpfs0+dpfs1)/2.0
+            
             filt = dpfs >= 0
             if np.any(filt):
                 # Probably not any faster to use numexpr here
