@@ -343,7 +343,7 @@ def loglike_and_gradient_wrapper(forward_cov, reverse_cov,
 
             # We may potentially encounter NaNs here, so ignoring warnings
             # about invalid (NaN) addition and subtraction.
-            with np.seterr(invalid='ignore'):
+            with np.errstate(invalid='ignore'):
 
                 pf_pars[i] += eps  # inc by eps
                 lpf2 = bws.get_lpf(pf_pars,freqs,windows)
