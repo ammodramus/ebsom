@@ -341,25 +341,29 @@ def loglike_and_gradient_wrapper(forward_cov, reverse_cov,
             dpfs = dpfs0
             '''
 
-            pf_pars[i] += eps  # inc by eps
-            lpf2 = bws.get_lpf(pf_pars,freqs,windows)
-            pf_pars[i] -= eps  # fix the eps
+            # We may potentially encounter NaNs here, so ignoring warnings
+            # about invalid (NaN) addition and subtraction.
+            with np.seterr(invalid='ignore'):
 
-            dlogpf0 = (lpf2-lpf_np)/eps
-            dpfs0 = dlogpf0*pf
+                pf_pars[i] += eps  # inc by eps
+                lpf2 = bws.get_lpf(pf_pars,freqs,windows)
+                pf_pars[i] -= eps  # fix the eps
 
-            pf_pars[i] -= eps  # decrement by eps
-            lpf3 = bws.get_lpf(pf_pars,freqs,windows)
-            pf_pars[i] += eps  # fix the eps
+                dlogpf0 = (lpf2-lpf_np)/eps
+                dpfs0 = dlogpf0*pf
 
-            dlogpf1 = (lpf_np-lpf3)/eps
-            dpfs1 = dlogpf1*pf
+                pf_pars[i] -= eps  # decrement by eps
+                lpf3 = bws.get_lpf(pf_pars,freqs,windows)
+                pf_pars[i] += eps  # fix the eps
 
-            dpfs = (dpfs0+dpfs1)/2.0
-            
-            # Eventually parameters may get to -inf logP(f), which causes NaN
-            # in gradient. They should be zero, so setting here.
-            dpfs[~np.isfinite(lpf_np)] = 0.0
+                dlogpf1 = (lpf_np-lpf3)/eps
+                dpfs1 = dlogpf1*pf
+
+                dpfs = (dpfs0+dpfs1)/2.0
+                
+                # Eventually parameters may get to -inf logP(f), which causes
+                # NaN in gradient. They should be zero, so setting here.
+                dpfs[~np.isfinite(lpf_np)] = 0.0
             
             filt = dpfs >= 0
             if np.any(filt):
