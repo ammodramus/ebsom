@@ -24,7 +24,8 @@ parser.add_argument('numepochs', help='number of training epochs', type=int)
 parser.add_argument('--hidden-layer-sizes', type=int, nargs='+',
                     default=[40,40],
                     help='hidden layer sizes, space-delimited')
-parser.add_argument('--num-freqs', type=int, default=100)
+parser.add_argument('--num-freqs', type=int, default=100,
+                    help='number of discrete allele frequencies')
 parser.add_argument('--concentration-factor', type=float, default=10,
                     help='increase to increase concentration of frequencies '
                          'near zero')
@@ -99,7 +100,10 @@ try:
         m3_summary = tf.summary.scalar('m3', param_m3_tf)
         param_m4_tf = tf.reduce_mean((nn_params_tf - param_mean_tf)**4)
         m4_summary = tf.summary.scalar('m4', param_m4_tf)
-
+    with tf.name_scope('pfprobhistogram'):
+        n_sample = 1000
+        freqsample_tf = tf.placeholder(shape=(n_sample,), dtype=tf.float32)
+        freqsample_summ = tf.summary.histogram('freqsample', freqsample_tf)
 
     with tf.name_scope('saver'):
         saver = tf.train.Saver()
@@ -118,9 +122,12 @@ try:
         this_rundir = 'summaries/run{:03d}'.format(this_run)
         writer = tf.summary.FileWriter(this_rundir, sess.graph)
 
+
     with tf.name_scope('progress_bar'):
         progbar = tf.keras.utils.Progbar(args.numepochs
                                          * err_mod.metadata_np.shape[0])
+
+
 
     sess.run(tf.global_variables_initializer())
 
@@ -144,25 +151,27 @@ try:
             except tf.errors.OutOfRangeError:
                 break
 
-            import time; start = time.time()
             tot_ll = 0.0
-            tot_grads_maximize = 0.0
+            tot_grads_minimize = 0.0
             for bam, ref, pos in izip(batch_bams, batch_refs, batch_positions):
                 ll, grads = err_mod.loglike_and_gradient(bam, ref, pos)
-                ll_maximize = -1.0*ll
-                grads_maximize = -1.0*grads
+                grads_minimize = -1.0*grads
                 tot_ll += ll
-                tot_grads_maximize += grads_maximize
+                tot_grads_minimize += grads_minimize
             # normalize gradient by batch size
-            tot_grads_maximize /= args.batch_size
+            tot_grads_minimize /= args.batch_size
             ll_per_locus = tot_ll / args.batch_size
-            dur = time.time()-start
-            sess.run(apply_grads, feed_dict={grads_tf:tot_grads_maximize})
+            sess.run(apply_grads, feed_dict={grads_tf:tot_grads_minimize})
 
             pf_params = sess.run(params_tf[:num_pf_params])
-            probnonzero = 1 - np.exp(bws.get_lpf(pf_params, freqs, windows)[0])
-            feed_dict = {grads_tf:grads_maximize, tot_ll_tf:ll_per_locus,
-                         probnon0_tf:probnonzero}
+            lpf_np = bws.get_lpf(pf_params, freqs, windows)
+            probnonzero = 1-np.exp(lpf_np[0])
+            distn = np.exp(lpf_np)
+            distn /= distn.sum()
+            freqsample_np = npr.choice(freqs, size=n_sample, p=distn,
+                                       replace=True)
+            feed_dict = {grads_tf:grads_minimize, tot_ll_tf:ll_per_locus,
+                         probnon0_tf:probnonzero, freqsample_tf:freqsample_np}
             summ = sess.run(summaries_tf, feed_dict=feed_dict)
             writer.add_summary(summ, global_batch_idx)
 
