@@ -165,19 +165,19 @@ def data_generator():
             yield ((cm, lo), np.ones(cm.shape[0]))
 
 ((cm, lo), _) = data_generator().next()
-import pdb; pdb.set_trace()
 
-cm_input = layers.Input(shape=(2, None, cm.shape[2]))
-layer1 = layers.Dense(32, activation='softplus')(cm_input)
+cm_input = layers.Input(shape=(None, 2, cm.shape[2]))
+masked_cm_input = layers.Masking(mask_value=-1e28)(cm_input)
+layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
 layer2 = layers.Dense(32, activation='softplus')(layer1)
 output_softmax = layers.Dense(4, activation='softmax')(layer2)
 output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
-output_major, output_minor = tf.split(output, 2, axis=1)
-
+#output_major, output_minor = tf.split(output, 2, axis=2)
 num_f = 256
 
-nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=[output_major, output_minor])
-likelihood = Likelihood(num_f)([output_major, output_minor])
+nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=[output])
+logpf = Likelihood(num_f)
+likelihood = logpf(output)
 
 ll_model = tf.keras.Model(inputs=cm_input, outputs=likelihood)
 ll_model.compile(optimizer='Adam', loss=LikelihoodLoss())
@@ -187,7 +187,7 @@ data = tf.data.Dataset.from_generator(
     data_generator,
     output_types=output_types)
 data = data.padded_batch(
-    batch_size=20,
-    padded_shapes=(((2, -1, 46), (-1, 4)), (-1,)),
+    batch_size=128,
+    padded_shapes=(((-1, 2, 46), (-1, 4)), (-1,)),
     padding_values=((-1e28, -1e28), -1e28))
 ll_model.fit(data)
