@@ -171,15 +171,19 @@ masked_cm_input = layers.Masking(mask_value=-1e28)(cm_input)
 layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
 layer2 = layers.Dense(32, activation='softplus')(layer1)
 output_softmax = layers.Dense(4, activation='softmax')(layer2)
-output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
+nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
 #output_major, output_minor = tf.split(output, 2, axis=2)
 num_f = 256
 
-nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=[output])
+nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
 logpf = Likelihood(num_f)
-likelihood = logpf(output)
 
-ll_model = tf.keras.Model(inputs=cm_input, outputs=likelihood)
+lo_input = layers.Input(shape=(None, 4))
+masked_lo_input = layers.Masking(mask_value=-1e28)(lo_input)
+
+likelihood = logpf([nn_output, masked_lo_input])
+
+ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
 ll_model.compile(optimizer='Adam', loss=LikelihoodLoss())
 
 output_types = ((tf.float32, tf.float32), tf.float32)
