@@ -115,7 +115,8 @@ def main():
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('input', help='input HDF5 file')
     parser.add_argument('--num-data-threads', type=int,
-                        help='number of threads to use for data processing')
+                        help='number of threads to use for data processing',
+                        default=2)
     args = parser.parse_args()
 
     dat = h5py.File(args.input, 'r')
@@ -174,7 +175,7 @@ def main():
             del cm, lo
             gc.collect()
 
-    num_data_processing_threads = 6
+    num_data_processing_threads = args.num_data_threads
     data_queue = mp.Queue(256)
     input_queues = [mp.Queue(0) for i in range(num_data_processing_threads)]
 
