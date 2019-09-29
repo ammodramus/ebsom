@@ -42,9 +42,7 @@ def get_major_minor(h5in):
     return mm
 
 
-def get_cm_and_lo(key, major, minor):
-    global h5cm
-    global h5lo
+def get_cm_and_lo(key, major, minor, h5cm, h5lo):
     cm = h5cm[key][:]
     lo = h5lo[key]
     cur_idx = 0
@@ -118,14 +116,14 @@ parser.add_argument('input', help = 'input HDF5 file')
 args = parser.parse_args()
 
 dat = h5py.File(args.input, 'r')
+h5cm = dat['covariate_matrices']
+h5lo = dat['locus_observations']
 print('# loading all_majorminor')
 all_majorminor = get_major_minor(dat)
 print('# obtaining column names')
 colnames_str = dat.attrs['covariate_column_names']
 colnames = colnames_str.split(',')
 
-h5cm = dat['covariate_matrices']
-h5lo = dat['locus_observations']
 
 print('# getting covariate matrix keys')
 h5cm_keys = []
@@ -137,7 +135,7 @@ for chrom, chrom_cm in h5cm.iteritems():
             name = unicode('/'.join(spname[2:]))
             h5cm_keys.append(name)
 
-print('# getting covariate matrix keys')
+print('# getting locus observation keys')
 h5lo_keys = []
 for chrom, chrom_lo in h5lo.iteritems():
     for bam, bam_lo in chrom_lo.iteritems():
@@ -151,8 +149,13 @@ assert set(h5lo_keys) == set(h5cm_keys), "covariate matrix and locus observation
 locus_keys = h5cm_keys
 arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, minor)
 num_args = len(arglist)
+dat.close()
+del h5cm, h5lo
 
-def produce_data(out_queue, in_queue):
+def produce_data(out_queue, in_queue, h5fn):
+    dat = h5py.File(args.input, 'r')
+    h5cm = dat['covariate_matrices']
+    h5lo = dat['locus_observations']
     while True:
         locus, major, minor = in_queue.get()
         if minor == 'N':
@@ -161,7 +164,7 @@ def produce_data(out_queue, in_queue):
             # variant calls), choose one at random.
             other_bases = [base for base in 'ACGT' if base != major]
             minor = npr.choice(other_bases)
-        cm, lo = get_cm_and_lo(locus, major, minor)
+        cm, lo = get_cm_and_lo(locus, major, minor, h5cm, h5lo)
         cm = cm.astype(np.float32)
         lo = lo.astype(np.float32)
         out_queue.put(((cm, lo), np.ones(cm.shape[0])))
@@ -173,7 +176,7 @@ data_queue = mp.Queue(256)
 input_queues = [mp.Queue(0) for i in range(num_data_processing_threads)]
 
 data_processes = [
-    mp.Process(target=produce_data, args=(data_queue, input_queues[tid]))
+    mp.Process(target=produce_data, args=(data_queue, input_queues[tid], args.input))
                    for tid in range(num_data_processing_threads)]
 for p in data_processes:
     p.start()
