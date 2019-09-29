@@ -10,7 +10,6 @@ from numba import jit
 from cylocobs import LocObs
 from cyregcov import RegCov
 from cyrowmaker import CyCovariateRowMaker
-from rowmaker import CovariateRowMaker
 
 
 def positive_int(val):
