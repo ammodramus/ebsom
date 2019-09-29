@@ -1,7 +1,10 @@
+from __future__ import print_function, division
 import sys
 import argparse
 import datetime
 import gc
+import multiprocessing as mp
+from Queue import Empty
 
 import h5py
 import numpy as np
@@ -9,11 +12,10 @@ import numpy.random as npr
 import tensorflow as tf
 import tensorflow.keras.layers as layers
 
-import h5py_util
 import beta_with_spikes_integrated as bws
 from likelihood_layer import Likelihood, LikelihoodLoss
 
-
+MASK_VALUE = -1e28
 
 def get_args(locus_keys, mm):
     # args will be key, major, minor
@@ -41,6 +43,8 @@ def get_major_minor(h5in):
 
 
 def get_cm_and_lo(key, major, minor):
+    global h5cm
+    global h5lo
     cm = h5cm[key][:]
     lo = h5lo[key]
     cur_idx = 0
@@ -106,7 +110,7 @@ def get_cm_and_lo(key, major, minor):
     return all_cm, all_lo
 
 
-print '#' + ' '.join(sys.argv)
+print('#' + ' '.join(sys.argv))
 
 parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -114,30 +118,30 @@ parser.add_argument('input', help = 'input HDF5 file')
 args = parser.parse_args()
 
 dat = h5py.File(args.input, 'r')
-print '# loading all_majorminor'
+print('# loading all_majorminor')
 all_majorminor = get_major_minor(dat)
-print '# obtaining column names'
+print('# obtaining column names')
 colnames_str = dat.attrs['covariate_column_names']
 colnames = colnames_str.split(',')
 
 h5cm = dat['covariate_matrices']
 h5lo = dat['locus_observations']
 
-print '# getting covariate matrix keys'
+print('# getting covariate matrix keys')
 h5cm_keys = []
 for chrom, chrom_cm in h5cm.iteritems():
     for bam, bam_cm in chrom_cm.iteritems():
-        print '# getting covariate matrix keys: {}'.format(bam)
+        print('# getting covariate matrix keys: {}'.format(bam))
         for locus, locus_cm in bam_cm.iteritems():
             spname = locus_cm.name.split('/')
             name = unicode('/'.join(spname[2:]))
             h5cm_keys.append(name)
 
-print '# getting covariate matrix keys'
+print('# getting covariate matrix keys')
 h5lo_keys = []
 for chrom, chrom_lo in h5lo.iteritems():
     for bam, bam_lo in chrom_lo.iteritems():
-        print '# getting locus observation keys: {}'.format(bam)
+        print('# getting locus observation keys: {}'.format(bam))
         for locus, locus_lo in bam_lo.iteritems():
             spname = locus_lo.name.split('/')
             name = unicode('/'.join(spname[2:]))
@@ -148,44 +152,66 @@ locus_keys = h5cm_keys
 arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, minor)
 num_args = len(arglist)
 
+def produce_data(out_queue, in_queue):
+    while True:
+        locus, major, minor = in_queue.get()
+        if minor == 'N':
+            # If there is no minor allele (either because all bases were
+            # called the same, or because two bases had the same number of
+            # variant calls), choose one at random.
+            other_bases = [base for base in 'ACGT' if base != major]
+            minor = npr.choice(other_bases)
+        cm, lo = get_cm_and_lo(locus, major, minor)
+        cm = cm.astype(np.float32)
+        lo = lo.astype(np.float32)
+        out_queue.put(((cm, lo), np.ones(cm.shape[0])))
+        del cm, lo
+        gc.collect()
 
+num_data_processing_threads = 6
+data_queue = mp.Queue(256)
+input_queues = [mp.Queue(0) for i in range(num_data_processing_threads)]
 
+data_processes = [
+    mp.Process(target=produce_data, args=(data_queue, input_queues[tid]))
+                   for tid in range(num_data_processing_threads)]
+for p in data_processes:
+    p.start()
 
 def data_generator():
     args = np.array(arglist[:])
     while True:
         npr.shuffle(args)
-        for locus, major, minor in args:
-            if minor == 'N':
-                # If there is no minor allele (either because all bases were
-                # called the same, or because two bases had the same number of
-                # variant calls), choose one at random.
-                other_bases = [base for base in 'ACGT' if base != major]
-                minor = npr.choice(other_bases)
-            cm, lo = get_cm_and_lo(locus, major, minor)
-            cm = cm.astype(np.float32)
-            lo = lo.astype(np.float32)
-            # Here there is no true label, so the value of 1.0 is yielded.
-            yield ((cm, lo), np.ones(cm.shape[0]))
-            del cm, lo
-            gc.collect()
+        split_args = np.array_split(args, num_data_processing_threads)
+        for tid, tid_args in enumerate(split_args):
+            for tid_arg in tid_args:
+                input_queues[tid].put(tid_arg)
+
+        while True:
+            try:
+                ((cm, lo), ones) = data_queue.get()
+                yield ((cm, lo), ones)
+                del cm, lo
+                gc.collect()
+            except Empty:
+                break
+        
 
 ((cm, lo), _) = data_generator().next()
 
 cm_input = layers.Input(shape=(None, 2, cm.shape[2]))
-masked_cm_input = layers.Masking(mask_value=-1e28)(cm_input)
+masked_cm_input = layers.Masking(mask_value=MASK_VALUE)(cm_input)
 layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
 layer2 = layers.Dense(16, activation='softplus')(layer1)
 output_softmax = layers.Dense(4, activation='softmax')(layer2)
 nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
-#output_major, output_minor = tf.split(output, 2, axis=2)
 num_f = 256
 
 nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
 logpf = Likelihood(num_f)
 
 lo_input = layers.Input(shape=(None, 4))
-masked_lo_input = layers.Masking(mask_value=-1e28)(lo_input)
+masked_lo_input = layers.Masking(mask_value=MASK_VALUE)(lo_input)
 
 likelihood = logpf([nn_output, masked_lo_input])
 
@@ -198,9 +224,9 @@ data = tf.data.Dataset.from_generator(
     data_generator,
     output_types=output_types)
 data = data.padded_batch(
-    batch_size=128,
+    batch_size=32,
     padded_shapes=(((-1, 2, 46), (-1, 4)), (-1,)),
-    padding_values=((-1e28, -1e28), -1e28))
+    padding_values=((MASK_VALUE, MASK_VALUE), MASK_VALUE))
 data = data.prefetch(16)
 
 checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
