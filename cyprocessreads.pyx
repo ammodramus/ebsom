@@ -122,8 +122,8 @@ def add_observations(
             continue
         if reverse:
             major = cut.comp(major)
-        cov_idx = covariate_matrix.set_default(row)
         base_idx = get_base_idx(obsbase)
+        cov_idx = covariate_matrix.set_default(row, base_idx)
         loc = batch_locobs[refpos][reverse][readnum-1]
         loc.add_obs(cov_idx, base_idx)
 
