@@ -108,133 +108,140 @@ def get_cm_and_lo(key, major, minor, h5cm, h5lo):
     return all_cm, all_lo
 
 
-print('#' + ' '.join(sys.argv))
+def main():
+    print('#' + ' '.join(sys.argv))
 
-parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('input', help = 'input HDF5 file')
-args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('input', help='input HDF5 file')
+    parser.add_argument('--num-data-threads', type=int,
+                        help='number of threads to use for data processing')
+    args = parser.parse_args()
 
-dat = h5py.File(args.input, 'r')
-h5cm = dat['covariate_matrices']
-h5lo = dat['locus_observations']
-print('# loading all_majorminor')
-all_majorminor = get_major_minor(dat)
-print('# obtaining column names')
-colnames_str = dat.attrs['covariate_column_names']
-colnames = colnames_str.split(',')
-
-
-print('# getting covariate matrix keys')
-h5cm_keys = []
-for chrom, chrom_cm in h5cm.iteritems():
-    for bam, bam_cm in chrom_cm.iteritems():
-        print('# getting covariate matrix keys: {}'.format(bam))
-        for locus, locus_cm in bam_cm.iteritems():
-            spname = locus_cm.name.split('/')
-            name = unicode('/'.join(spname[2:]))
-            h5cm_keys.append(name)
-
-print('# getting locus observation keys')
-h5lo_keys = []
-for chrom, chrom_lo in h5lo.iteritems():
-    for bam, bam_lo in chrom_lo.iteritems():
-        print('# getting locus observation keys: {}'.format(bam))
-        for locus, locus_lo in bam_lo.iteritems():
-            spname = locus_lo.name.split('/')
-            name = unicode('/'.join(spname[2:]))
-            h5lo_keys.append(name)
-assert set(h5lo_keys) == set(h5cm_keys), "covariate matrix and locus observation keys differ"
-
-locus_keys = h5cm_keys
-arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, minor)
-num_args = len(arglist)
-dat.close()
-del h5cm, h5lo
-
-def produce_data(out_queue, in_queue, h5fn):
     dat = h5py.File(args.input, 'r')
     h5cm = dat['covariate_matrices']
     h5lo = dat['locus_observations']
-    while True:
-        locus, major, minor = in_queue.get()
-        if minor == 'N':
-            # If there is no minor allele (either because all bases were
-            # called the same, or because two bases had the same number of
-            # variant calls), choose one at random.
-            other_bases = [base for base in 'ACGT' if base != major]
-            minor = npr.choice(other_bases)
-        cm, lo = get_cm_and_lo(locus, major, minor, h5cm, h5lo)
-        cm = cm.astype(np.float32)
-        lo = lo.astype(np.float32)
-        out_queue.put(((cm, lo), np.ones(cm.shape[0])))
-        del cm, lo
-        gc.collect()
+    print('# loading all_majorminor')
+    all_majorminor = get_major_minor(dat)
+    print('# obtaining column names')
+    colnames_str = dat.attrs['covariate_column_names']
+    colnames = colnames_str.split(',')
 
-num_data_processing_threads = 6
-data_queue = mp.Queue(256)
-input_queues = [mp.Queue(0) for i in range(num_data_processing_threads)]
 
-data_processes = [
-    mp.Process(target=produce_data, args=(data_queue, input_queues[tid], args.input))
-                   for tid in range(num_data_processing_threads)]
-for p in data_processes:
-    p.start()
+    print('# getting covariate matrix keys')
+    h5cm_keys = []
+    for chrom, chrom_cm in h5cm.iteritems():
+        for bam, bam_cm in chrom_cm.iteritems():
+            print('# getting covariate matrix keys: {}'.format(bam))
+            for locus, locus_cm in bam_cm.iteritems():
+                spname = locus_cm.name.split('/')
+                name = unicode('/'.join(spname[2:]))
+                h5cm_keys.append(name)
 
-def data_generator():
-    args = np.array(arglist[:])
-    while True:
-        npr.shuffle(args)
-        split_args = np.array_split(args, num_data_processing_threads)
-        for tid, tid_args in enumerate(split_args):
-            for tid_arg in tid_args:
-                input_queues[tid].put(tid_arg)
+    print('# getting locus observation keys')
+    h5lo_keys = []
+    for chrom, chrom_lo in h5lo.iteritems():
+        for bam, bam_lo in chrom_lo.iteritems():
+            print('# getting locus observation keys: {}'.format(bam))
+            for locus, locus_lo in bam_lo.iteritems():
+                spname = locus_lo.name.split('/')
+                name = unicode('/'.join(spname[2:]))
+                h5lo_keys.append(name)
+    assert set(h5lo_keys) == set(h5cm_keys), "covariate matrix and locus observation keys differ"
 
+    locus_keys = h5cm_keys
+    arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, minor)
+    num_args = len(arglist)
+    dat.close()
+    del h5cm, h5lo
+
+    def produce_data(out_queue, in_queue, h5fn):
+        dat = h5py.File(args.input, 'r')
+        h5cm = dat['covariate_matrices']
+        h5lo = dat['locus_observations']
         while True:
-            try:
-                ((cm, lo), ones) = data_queue.get()
-                yield ((cm, lo), ones)
-                del cm, lo
-                gc.collect()
-            except Empty:
-                break
-        
+            locus, major, minor = in_queue.get()
+            if minor == 'N':
+                # If there is no minor allele (either because all bases were
+                # called the same, or because two bases had the same number of
+                # variant calls), choose one at random.
+                other_bases = [base for base in 'ACGT' if base != major]
+                minor = npr.choice(other_bases)
+            cm, lo = get_cm_and_lo(locus, major, minor, h5cm, h5lo)
+            cm = cm.astype(np.float32)
+            lo = lo.astype(np.float32)
+            out_queue.put(((cm, lo), np.ones(cm.shape[0])))
+            del cm, lo
+            gc.collect()
 
-((cm, lo), _) = data_generator().next()
+    num_data_processing_threads = 6
+    data_queue = mp.Queue(256)
+    input_queues = [mp.Queue(0) for i in range(num_data_processing_threads)]
 
-cm_input = layers.Input(shape=(None, 2, cm.shape[2]))
-masked_cm_input = layers.Masking(mask_value=MASK_VALUE)(cm_input)
-layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
-layer2 = layers.Dense(16, activation='softplus')(layer1)
-output_softmax = layers.Dense(4, activation='softmax')(layer2)
-nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
-num_f = 256
+    data_processes = [
+        mp.Process(target=produce_data, args=(data_queue, input_queues[tid], args.input))
+                       for tid in range(num_data_processing_threads)]
+    for p in data_processes:
+        p.start()
 
-nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
-logpf = Likelihood(num_f)
+    def data_generator():
+        args = np.array(arglist[:])
+        while True:
+            npr.shuffle(args)
+            split_args = np.array_split(args, num_data_processing_threads)
+            for tid, tid_args in enumerate(split_args):
+                for tid_arg in tid_args:
+                    input_queues[tid].put(tid_arg)
 
-lo_input = layers.Input(shape=(None, 4))
-masked_lo_input = layers.Masking(mask_value=MASK_VALUE)(lo_input)
+            while True:
+                try:
+                    ((cm, lo), ones) = data_queue.get()
+                    yield ((cm, lo), ones)
+                    del cm, lo
+                    gc.collect()
+                except Empty:
+                    break
+            
 
-likelihood = logpf([nn_output, masked_lo_input])
+    ((cm, lo), _) = data_generator().next()
 
-ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
-ll_loss = LikelihoodLoss()
-ll_model.compile(optimizer='Adam', loss=ll_loss)
+    cm_input = layers.Input(shape=(None, 2, cm.shape[2]))
+    masked_cm_input = layers.Masking(mask_value=MASK_VALUE)(cm_input)
+    layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
+    layer2 = layers.Dense(16, activation='softplus')(layer1)
+    output_softmax = layers.Dense(4, activation='softmax')(layer2)
+    nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
+    num_f = 256
 
-output_types = ((tf.float32, tf.float32), tf.float32)
-data = tf.data.Dataset.from_generator(
-    data_generator,
-    output_types=output_types)
-data = data.padded_batch(
-    batch_size=32,
-    padded_shapes=(((-1, 2, 46), (-1, 4)), (-1,)),
-    padding_values=((MASK_VALUE, MASK_VALUE), MASK_VALUE))
-data = data.prefetch(16)
+    nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
+    logpf = Likelihood(num_f)
 
-checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-    'error.model',load_weights_on_restart=True)
-num_epochs = 10000
-batches_per_epoch = 10
-ll_model.fit(data, epochs=num_epochs, steps_per_epoch=batches_per_epoch,
-          callbacks=[checkpoint_callback])
+    lo_input = layers.Input(shape=(None, 4))
+    masked_lo_input = layers.Masking(mask_value=MASK_VALUE)(lo_input)
+
+    likelihood = logpf([nn_output, masked_lo_input])
+
+    ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
+    ll_loss = LikelihoodLoss()
+    ll_model.compile(optimizer='Adam', loss=ll_loss)
+
+    batch_size = 32
+    output_types = ((tf.float32, tf.float32), tf.float32)
+    data = tf.data.Dataset.from_generator(
+        data_generator,
+        output_types=output_types)
+    data = data.padded_batch(
+        batch_size=batch_size,
+        padded_shapes=(((-1, 2, 46), (-1, 4)), (-1,)),
+        padding_values=((MASK_VALUE, MASK_VALUE), MASK_VALUE))
+    data = data.prefetch(2*batch_size)
+
+    checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        'error.model',load_weights_on_restart=True)
+    num_epochs = 10000
+    batches_per_epoch = 10
+    ll_model.fit(data, epochs=num_epochs, steps_per_epoch=batches_per_epoch,
+              callbacks=[checkpoint_callback])
+
+if __name__ == '__main__':
+    main()
