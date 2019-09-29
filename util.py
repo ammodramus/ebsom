@@ -1,14 +1,17 @@
 from __future__ import division, print_function
+import os
 import os.path as osp
-import pysam
-#from rowmaker import CovariateRowMaker
-from cyrowmaker import CyCovariateRowMaker
-from rowmaker import CovariateRowMaker
+
 import numpy as np
+import pandas as pd
+import pysam
 from numba import jit
+
 from cylocobs import LocObs
 from cyregcov import RegCov
-import os.path
+from cyrowmaker import CyCovariateRowMaker
+from rowmaker import CovariateRowMaker
+
 
 def positive_int(val):
     v = int(val)
@@ -64,7 +67,7 @@ def get_bams(bams_fn):
     with open(bams_fn) as fin:
         for line in fin:
             bam_fp = line.strip()
-            head, bam_fn = os.path.split(bam_fp)
+            head, bam_fn = osp.split(bam_fp)
             if prefix is not None:
                 if head != prefix:
                     raise ValueError('all bam files must be in the same directory')
@@ -97,7 +100,7 @@ def get_ref_names(refs_input, bams):
 
 
 # these will be memory hogs
-def get_all_counts(bams, refs, min_bq):
+def get_all_counts(bams, refs, min_bq, bam_fn_prefix):
     '''
     bams      dict of bam_fn:AlignmentFiles
     refs      list of reference names
@@ -122,8 +125,19 @@ def get_all_counts(bams, refs, min_bq):
             if not reflen_found:
                 raise ValueError('length of ref {} not found in {}'.format(
                     ref, bam_fn))
-            c = get_counts(bam, contig=ref, start = 0, end = reflen,
-                    quality_threshold = min_bq)
+            print('# getting counts for {}'.format(bam_fn))
+            count_fn = bam_fn_prefix + '/' + bam_fn + '.counts'
+            if osp.exists(count_fn):
+                print('# loading counts for {} from counts file'.format(bam_fn))
+                c_pd = pd.read_csv(count_fn, sep='\t', header=0, comment='#')
+                c_pd['A'] = c_pd['A'] + c_pd['a']
+                c_pd['C'] = c_pd['C'] + c_pd['c']
+                c_pd['G'] = c_pd['G'] + c_pd['g']
+                c_pd['T'] = c_pd['T'] + c_pd['t']
+                c = c_pd[list('ACGT')].values
+            else:
+                c = get_counts(bam, contig=ref, start = 0, end = reflen,
+                        quality_threshold = min_bq)
             counts[ref][bam_fn] = c
     return counts
 
@@ -288,3 +302,13 @@ def normalize_covariates(cm):
             retcm[:,j] = 0
         min_maxes.append((m,M))
     return retcm, min_maxes
+
+
+def get_reference_lengths(reference_names, bam_fns, all_consensuses):
+    ref_lens = {}
+    for ref_name in reference_names:
+        ref_lens[ref_name] = {}
+        for bam_fn in bam_fns:
+            ref_lens[ref_name][bam_fn] = len(all_consensuses[ref_name][bam_fn])
+    return ref_lens
+
