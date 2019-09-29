@@ -4,38 +4,7 @@ cimport cython
 import cython
 
 cdef class CyCovariateRowMaker:
-    def __init__(self,
-                 int contextlen,
-                 int dend_roundby,
-                 bytes thiscons = None,
-                 list othercons = None,
-                 list bam_fns = [],
-                 userdefined = None,
-                 userdefined_names = None,
-                 bint use_bq = True,
-                 bint use_mq = True,
-                 bint use_dend = True,
-                 bint use_bam = True):
-        self.contextlen = contextlen
-        self.dend_roundby = dend_roundby
-        self.thiscons = thiscons
-        self.othercons = othercons
-        self.userdefined_rows = userdefined
-        self.userdefined_names = userdefined_names
-        self.use_bq = use_bq
-        self.use_mq = use_mq
-        self.use_dend = use_dend
-        self.use_context = self.contextlen >= 1
-        self.use_userdefined = userdefined is not None
-        self.use_bam = use_bam
-        
-        if thiscons is not None and othercons is not None:
-            self.use_contamination = True
-        else:
-            self.use_contamination = False
-        
-        if self.contextlen is not None and self.contextlen > 0:
-            bases = 'ACGT'
+
     def __init__(self,
                  int contextlen,
                  int dend_roundby,
@@ -98,11 +67,11 @@ cdef class CyCovariateRowMaker:
         if self.use_contamination:
             pythiscons = np.array(list(thiscons))
             pyothercons = np.array([np.array(list(oc)) for oc in othercons])
-            contam_rows = np.zeros((pythiscons.shape[0], 4))
+            contam_rows = np.zeros((pythiscons.shape[0], 4), dtype=np.float32)
             otherbases = 'ACGT'
             for i, ob in enumerate(otherbases):
-                countdiffs = np.zeros_like(pythiscons, dtype = np.float64)
-                countcalls = np.zeros_like(pythiscons, dtype = np.float64)
+                countdiffs = np.zeros_like(pythiscons, dtype = np.float32)
+                countcalls = np.zeros_like(pythiscons, dtype = np.float32)
                 for oc in othercons:
                     countcalls += (oc != 'N')
                     filt = ((oc != 'N') & (pythiscons != 'N') & (oc != pythiscons)
@@ -133,10 +102,10 @@ cdef class CyCovariateRowMaker:
             bytes bam_name, bint reverse):
         cdef:
             int context_index
-            np.ndarray[ndim=1,dtype=np.float64_t] row
+            np.ndarray[ndim=1,dtype=np.float32_t] row
 
-        row = np.zeros(self.rowlen)
-        cdef double[:] crow = row
+        row = np.zeros(self.rowlen, dtype=np.float32)
+        cdef float[:] crow = row
         crow[0] = 1.0   # constant
         cdef int cur_idx = 1, bam_idx
         if self.use_bq:

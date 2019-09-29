@@ -10,8 +10,8 @@ cdef class CyCovariateRowMaker:
         bint use_bq, use_mq, use_dend, use_context, use_userdefined, use_bam
         bint use_contamination
         public int rowlen
-        cdef double[:,:] ccontam_rows
-        cdef double[:,:] crevcomp_contam_rows
+        cdef float[:,:] ccontam_rows
+        cdef float[:,:] crevcomp_contam_rows
         cdef dict contextindices
         cdef object contam_rows
         cdef object revcomp_contam_rows
