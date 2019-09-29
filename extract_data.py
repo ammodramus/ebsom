@@ -1,6 +1,7 @@
 import sys
 import argparse
 import datetime
+import gc
 
 import h5py
 import numpy as np
@@ -12,7 +13,7 @@ import h5py_util
 import beta_with_spikes_integrated as bws
 from likelihood_layer import Likelihood, LikelihoodLoss
 
-tf.enable_eager_execution()
+
 
 def get_args(locus_keys, mm):
     # args will be key, major, minor
@@ -26,6 +27,7 @@ def get_args(locus_keys, mm):
         args.append([key, major, minor])
     return args
 
+
 def get_major_minor(h5in):
     mm = {}
     for chrom in h5in['major_minor'].keys():
@@ -36,6 +38,72 @@ def get_major_minor(h5in):
             t_h5_bam_mm = h5_bam_mm[:,:].copy()
             mm[chrom][bam] = t_h5_bam_mm
     return mm
+
+
+def get_cm_and_lo(key, major, minor):
+    cm = h5cm[key][:]
+    lo = h5lo[key]
+    cur_idx = 0
+    # forward first
+    lof1 = lo['f1'][:]
+    lof2 = lo['f2'][:]
+    # then reverse
+    lor1 = lo['r1'][:]
+    lor2 = lo['r2'][:]
+
+    # add read-number column to covariates
+    readnumsf1 = np.zeros(lof1.shape[0])
+    readnumsf2 = np.ones(lof2.shape[0])
+    readnumsf = np.concatenate((readnumsf1, readnumsf2))
+    readnumsr1 = np.zeros(lor1.shape[0])
+    readnumsr2 = np.ones(lor2.shape[0])
+    readnumsr = np.concatenate((readnumsr1, readnumsr2))
+
+    lof = np.vstack((lof1, lof2))
+    lor = np.vstack((lor1, lor2))
+
+    cmf = cm[lof[:,0].astype(np.int)]
+    cmf = np.hstack((cmf, readnumsf[:,np.newaxis]))
+    cmr = cm[lor[:,0].astype(np.int)]
+    cmr = np.hstack((cmr, readnumsr[:,np.newaxis]))
+    # The first column indexes into cm; we no longer need it.
+    lof = lof[:,1:]
+    lor = lor[:,1:]
+
+    lo_fr = np.vstack((lof, lor))
+    cm_fr = np.vstack((cmf, cmr))
+
+    # return cm for major, cm for minor, concatenated
+    # return one cm, one lo, major and minor concatenated, num_major
+
+    if minor == 'N':
+        minor = npr.choice([el for el in 'ACGT' if el != major])
+
+    forward_major = np.zeros(4)
+    forward_major['ACGT'.index(major)] = 1.0
+    forward_major = np.tile(forward_major, (lof.shape[0], 1))
+    forward_minor = np.zeros(4)
+    forward_minor['ACGT'.index(minor)] = 1.0
+    forward_minor = np.tile(forward_minor, (lof.shape[0], 1))
+
+    reverse_major = np.zeros(4)
+    reverse_major['TGCA'.index(major)] = 1.0
+    reverse_major = np.tile(reverse_major, (lor.shape[0], 1))
+    reverse_minor = np.zeros(4)
+    reverse_minor['TGCA'.index(minor)] = 1.0
+    reverse_minor = np.tile(reverse_minor, (lor.shape[0], 1))
+
+    major_fr = np.vstack((forward_major, reverse_major))
+    minor_fr = np.vstack((forward_minor, reverse_minor))
+
+    cm_major = np.hstack((cm_fr, major_fr))
+    cm_minor = np.hstack((cm_fr, minor_fr))
+    all_cm = np.array([cm_major, cm_minor])
+    # Put the 'read' dimension first, to enable support for masking.
+    all_cm = np.swapaxes(all_cm, 0, 1).copy()
+    all_lo = lo_fr
+    gc.collect()
+    return all_cm, all_lo
 
 
 print '#' + ' '.join(sys.argv)
@@ -81,69 +149,6 @@ arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, mi
 num_args = len(arglist)
 
 
-def get_cm_and_lo(key, major, minor):
-    cm = h5cm[key][:]
-    lo = h5lo[key]
-    cur_idx = 0
-    # forward first
-    lof1 = lo['f1'][:]
-    lof2 = lo['f2'][:]
-    lor1 = lo['r1'][:]
-    lor2 = lo['r2'][:]
-
-    readnumsf1 = np.zeros(lof1.shape[0])
-    readnumsf2 = np.ones(lof2.shape[0])
-    readnumsf = np.concatenate((readnumsf1, readnumsf2))
-
-    readnumsr1 = np.zeros(lor1.shape[0])
-    readnumsr2 = np.ones(lor2.shape[0])
-    readnumsr = np.concatenate((readnumsr1, readnumsr2))
-    
-    lof = np.vstack((lof1, lof2))
-    lor = np.vstack((lor1, lor2))
-
-    cmf = cm[lof[:,0].astype(np.int)]
-    cmf = np.hstack((cmf, readnumsf[:,np.newaxis]))
-    cmr = cm[lor[:,0].astype(np.int)]
-    cmr = np.hstack((cmr, readnumsr[:,np.newaxis]))
-    # The first column indexes into cm; we no longer need it.
-    lof = lof[:,1:]
-    lor = lor[:,1:]
-
-    lo_fr = np.vstack((lof, lor))
-    cm_fr = np.vstack((cmf, cmr))
-
-    # return cm for major, cm for minor, concatenated
-    # return one cm, one lo, major and minor concatenated, num_major
-
-    if minor == 'N':
-        minor = npr.choice([el for el in 'ACGT' if el != major])
-
-    forward_major = np.zeros(4)
-    forward_major['ACGT'.index(major)] = 1.0
-    forward_major = np.tile(forward_major, (lof.shape[0], 1))
-    forward_minor = np.zeros(4)
-    forward_minor['ACGT'.index(minor)] = 1.0
-    forward_minor = np.tile(forward_minor, (lof.shape[0], 1))
-
-    reverse_major = np.zeros(4)
-    reverse_major['TGCA'.index(major)] = 1.0
-    reverse_major = np.tile(reverse_major, (lor.shape[0], 1))
-    reverse_minor = np.zeros(4)
-    reverse_minor['TGCA'.index(minor)] = 1.0
-    reverse_minor = np.tile(reverse_minor, (lor.shape[0], 1))
-
-    major_fr = np.vstack((forward_major, reverse_major))
-    minor_fr = np.vstack((forward_minor, reverse_minor))
-
-    cm_major = np.hstack((cm_fr, major_fr))
-    cm_minor = np.hstack((cm_fr, minor_fr))
-    all_cm = np.array([cm_major, cm_minor])
-
-    all_lo = lo_fr
-
-    return all_cm, all_lo
-
 
 
 def data_generator():
@@ -158,18 +163,19 @@ def data_generator():
                 other_bases = [base for base in 'ACGT' if base != major]
                 minor = npr.choice(other_bases)
             cm, lo = get_cm_and_lo(locus, major, minor)
-            cm = np.swapaxes(cm, 0, 1).copy()
             cm = cm.astype(np.float32)
             lo = lo.astype(np.float32)
             # Here there is no true label, so the value of 1.0 is yielded.
             yield ((cm, lo), np.ones(cm.shape[0]))
+            del cm, lo
+            gc.collect()
 
 ((cm, lo), _) = data_generator().next()
 
 cm_input = layers.Input(shape=(None, 2, cm.shape[2]))
 masked_cm_input = layers.Masking(mask_value=-1e28)(cm_input)
 layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
-layer2 = layers.Dense(32, activation='softplus')(layer1)
+layer2 = layers.Dense(16, activation='softplus')(layer1)
 output_softmax = layers.Dense(4, activation='softmax')(layer2)
 nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
 #output_major, output_minor = tf.split(output, 2, axis=2)
@@ -184,7 +190,8 @@ masked_lo_input = layers.Masking(mask_value=-1e28)(lo_input)
 likelihood = logpf([nn_output, masked_lo_input])
 
 ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
-ll_model.compile(optimizer='Adam', loss=LikelihoodLoss())
+ll_loss = LikelihoodLoss()
+ll_model.compile(optimizer='Adam', loss=ll_loss)
 
 output_types = ((tf.float32, tf.float32), tf.float32)
 data = tf.data.Dataset.from_generator(
@@ -194,4 +201,11 @@ data = data.padded_batch(
     batch_size=128,
     padded_shapes=(((-1, 2, 46), (-1, 4)), (-1,)),
     padding_values=((-1e28, -1e28), -1e28))
-ll_model.fit(data)
+data = data.prefetch(16)
+
+checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+    'error.model',load_weights_on_restart=True)
+num_epochs = 10000
+batches_per_epoch = 10
+ll_model.fit(data, epochs=num_epochs, steps_per_epoch=batches_per_epoch,
+          callbacks=[checkpoint_callback])

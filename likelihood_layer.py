@@ -22,12 +22,13 @@ class Likelihood(layers.Layer):
         self.set_freqs()
         self.params = self.add_weight('lpf_params', shape=(3,))
         self.supports_masking = True
+        self.set_lpf()
 
     def build(self, inp):
         pass
 
     def call(self, inp):
-        lpf = self.get_lpf()
+        lpf = self.lpf
         output, masked_lo_input = inp
         output_major, output_minor = tf.split(output, 2, axis=2)
         output_major = tf.multiply(
@@ -60,13 +61,13 @@ class Likelihood(layers.Layer):
 
     def set_freqs(self):
         v = self.window_boundaries
-        f = np.concatenate(((0,), (v[:-1]+v[1:])/2.0))
-        f = tf.constant(f, dtype='float32')
+        freq0 = tf.constant((0.,))
+        f = tf.concat((freq0, (v[:-1]+v[1:])/2.0), 0)
         self.freqs = f
         self.logf = tf.math.log(f)
         self.log1mf = tf.math.log(1.0-f)
 
-    def get_lpf(self):
+    def set_lpf(self):
         '''
         calculate log-probabilities of the minor allele frequency under a
         beta-with-spike model
@@ -98,8 +99,7 @@ class Likelihood(layers.Layer):
         diff_If_h = If_l[1:]-If_l[:-1]
         diff_If_h_rev = (If_h[::-1][1:] - If_h[::-1][:-1])[::-1]
         pf = (diff_If_h + diff_If_h_rev)*(1-z)
-        lpf = tf.concat([tf.expand_dims(tf.math.log(z), axis=0), tf.math.log(pf)], axis=0, name='concat')
-        return lpf
+        self.lpf = tf.concat([tf.expand_dims(tf.math.log(z), axis=0), tf.math.log(pf)], axis=0, name='concat')
 
 
 class LikelihoodLoss(tf.keras.losses.Loss):
