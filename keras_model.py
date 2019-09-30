@@ -117,6 +117,7 @@ def main():
     parser.add_argument('--num-data-threads', type=int,
                         help='number of threads to use for data processing',
                         default=2)
+    parser.add_argument('--load-model', help='tensorflow model to load')
     args = parser.parse_args()
 
     dat = h5py.File(args.input, 'r')
@@ -225,6 +226,8 @@ def main():
     ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
     ll_loss = LikelihoodLoss()
     ll_model.compile(optimizer='Adam', loss=ll_loss)
+    if args.load_model:
+        ll_model.load_weights(args.load_model)
 
     batch_size = 32
     output_types = ((tf.float32, tf.float32), tf.float32)
