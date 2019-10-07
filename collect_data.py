@@ -5,7 +5,6 @@ import pysam
 from locuscollectors import NonCandidateCollector, CandidateCollector
 import util as ut
 import cyprocessreads as cpr
-import cyregression as cre
 import h5py
 import h5py_util
 
