@@ -101,9 +101,10 @@ def get_ref_names(refs_input, bams):
 # these will be memory hogs
 def get_all_counts(bams, refs, min_bq, bam_fn_prefix):
     '''
-    bams      dict of bam_fn:AlignmentFiles
-    refs      list of reference names
-    min_bq    minimum base quality
+    bams           dict of bam_fn:AlignmentFiles
+    refs           list of reference names
+    min_bq         minimum base quality
+    bam_fn_prefix  filename prefix
 
     Returns
         a dictionary of counts, where counts[ref][bam_fn] gives the array of
