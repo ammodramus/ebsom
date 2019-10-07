@@ -50,7 +50,7 @@ prefix, bam_fns, bams = ut.get_bams(args.bams)
 ref_names = ut.get_ref_names(args.references, bams)
 
 print('getting counts')
-all_counts = ut.get_all_counts(bams, ref_names, min_bq)
+all_counts = ut.get_all_counts(bams, ref_names, min_bq, prefix)
 print('getting consensus')
 all_consensuses = ut.get_all_consensuses(all_counts, min_coverage = args.min_coverage)
 print('getting major-minor')
@@ -64,7 +64,7 @@ row_makers, rowlen = ut.get_row_makers(bam_fns, ref_names, context_len,
 covariate_matrices = ut.get_covariate_matrices(rowlen)
 
 output = h5py.File(args.output, 'w')
-h5lo = output.create_group('locus_observations')
+h5lo = output.create_group('collapsed_locus_observations')
 h5mm = output.create_group('major_minor')
 
 h5py_util.add_major_minor(all_majorminor, h5mm)
@@ -87,6 +87,7 @@ for ref in ref_names:
 cm = ut.collect_covariate_matrices(covariate_matrices)
 # they're all the same...
 cm_names = row_makers[ref][bam_fn].get_covariate_names()
+output.attrs['covariate_column_names'] = ','.join(list(cm_names))
 
 if not args.do_not_remove_nonvariable:
     nonvariables = []
@@ -118,6 +119,47 @@ if not args.do_not_remove_nonvariable:
     old_cm = cm
     cm = old_cm[:,np.array(keeper_columns)]
 
+origcm = cm[:,:]
 
-output.attrs['covariate_column_names'] = ','.join(list(cm_names))
-output.create_dataset('covariate_matrix', dtype = np.float64, data = cm)
+
+rowlen = origcm.shape[1]
+cm, cm_minmaxes = ut.normalize_covariates(origcm)
+
+
+output.attrs['rowlen'] = rowlen
+output.create_dataset('covariates_mins_maxes', data = cm_minmaxes)
+
+
+outcm = output.create_group('covariate_matrices')
+outlo = output.create_group('locus_observations')
+
+
+for chrom in output['collapsed_locus_observations'].keys():
+    chromcm = outcm.create_group(chrom)
+    chromlo = outlo.create_group(chrom)
+    for bam in output['collapsed_locus_observations'][chrom].keys():
+        bam_idx = output['collapsed_locus_observations'][chrom].keys().index(bam)
+        bams_len = len(output['locus_observations'][chrom].keys())
+        bamcm = chromcm.create_group(bam)
+        bamlo = chromlo.create_group(bam)
+        for locus in output['collapsed_locus_observations'][chrom][bam].keys():
+            print('\r{} ({} of {}) {}'.format(bam, bam_idx, bams_len, locus),
+                  end='')
+            locuslo = bamlo.create_group(locus)
+            reg_cm = []
+            cur_cm_idx = 0
+            for reg in ['f1','f2','r1','r2']:
+                locobs = output['collapsed_locus_observations'][chrom][bam][locus][reg][:,:]
+                reg_idxs = []
+                for idx in locobs[:,0]:
+                    reg_cm.append(cm[idx])
+                    reg_idxs.append(cur_cm_idx)
+                    cur_cm_idx += 1
+                loclodat = np.column_stack((reg_idxs, locobs[:,1:]))
+                locuslo.create_dataset(reg, shape = (locobs.shape[0], 5), dtype = np.uint32, data = loclodat, compression = 'gzip', compression_opts = 7)
+            reg_cm = np.array(reg_cm)
+            bamcm.create_dataset(locus, data = reg_cm, dtype = np.float64, compression = 'gzip', compression_opts = 7)
+
+
+del output['collapsed_locus_observations']
+output.close()
