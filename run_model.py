@@ -206,8 +206,9 @@ def main():
             
 
     ((cm, lo), _) = data_generator().next()
+    num_cm_columns = cm.shape[2]
 
-    cm_input = layers.Input(shape=(None, 2, cm.shape[2]))
+    cm_input = layers.Input(shape=(None, 2, num_cm_columns))
     masked_cm_input = layers.Masking(mask_value=MASK_VALUE)(cm_input)
     layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
     layer2 = layers.Dense(16, activation='softplus')(layer1)
@@ -236,7 +237,7 @@ def main():
         output_types=output_types)
     data = data.padded_batch(
         batch_size=batch_size,
-        padded_shapes=(((-1, 2, 46), (-1, 4)), (-1,)),
+        padded_shapes=(((-1, 2, num_cm_columns), (-1, 4)), (-1,)),
         padding_values=((MASK_VALUE, MASK_VALUE), MASK_VALUE))
     data = data.prefetch(2*batch_size)
 
