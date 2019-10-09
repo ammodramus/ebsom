@@ -4,7 +4,11 @@ import argparse
 import datetime
 import gc
 import multiprocessing as mp
-from Queue import Empty
+try:
+    from Queue import Empty
+except ImportError:
+    # Python 3
+    from asyncio import QueueEmpty as Empty
 
 import h5py
 import numpy as np
@@ -118,6 +122,8 @@ def main():
                         help='number of threads to use for data processing',
                         default=2)
     parser.add_argument('--load-model', help='tensorflow model to load')
+    parser.add_argument('--save-model', help='filename for saving model parameters',
+                        default='error.model')
     args = parser.parse_args()
 
     dat = h5py.File(args.input, 'r')
@@ -214,7 +220,7 @@ def main():
     layer2 = layers.Dense(16, activation='softplus')(layer1)
     output_softmax = layers.Dense(4, activation='softmax')(layer2)
     nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
-    num_f = 256
+    num_f = 128
 
     nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
     logpf = Likelihood(num_f)
@@ -242,7 +248,7 @@ def main():
     data = data.prefetch(2*batch_size)
 
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        'error.model',load_weights_on_restart=True)
+        args.save_model, load_weights_on_restart=True)
     num_epochs = 10000
     batches_per_epoch = 10
     ll_model.fit(data, epochs=num_epochs, steps_per_epoch=batches_per_epoch,
