@@ -5,7 +5,6 @@ import os.path as osp
 import numpy as np
 import pandas as pd
 import pysam
-from numba import jit
 
 from cylocobs import LocObs
 from cyregcov import RegCov
