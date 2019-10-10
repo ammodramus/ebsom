@@ -1,5 +1,5 @@
 This repository implements a novel [empirical
-Bayesian](https://en.wikipedia.org/wiki/Empirical_Bayes_method) approach for
+Bayesian](https://en.wikipedia.org/wiki/Empirical_Bayes_method) model for
 low-frequency variant calling with high-coverage
 pooled-sample/high-ploidy/somatic DNA sequencing data. This approach works well
 on simulated data but is **not currently working on the real data for which it
