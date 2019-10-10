@@ -19,3 +19,13 @@ number, position along the read, and potential for contamination at the site
 (allowing for index-swapping of multiplexed libraries).
 
 For a more concrete mathematical description, see README.ipynb.
+
+This module requires the following Python packages:
+
+ - [h5py](https://www.h5py.org)
+ - [tensorflow 1.14+](https://www.tensorflow.org)
+ - [pysam](https://github.com/pysam-developers/pysam)
+
+[Cython](https://cython.org) is also required.
+
+Once dependencies are installed, clone this directory and run `python setup.py build_ext -i`.
