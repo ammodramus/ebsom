@@ -15,11 +15,11 @@ import numpy as np
 import numpy.random as npr
 import tensorflow as tf
 import tensorflow.keras.layers as layers
+import scipy
 
 import beta_with_spikes_integrated as bws
 from likelihood_layer import Likelihood, LikelihoodLoss
-
-from run_model import make_model
+from run_model import make_model, get_cm_and_lo
 
 class DebugCallback(tf.keras.callbacks.Callback):
   def on_train_batch_end(self, batch, logs=None):
@@ -52,71 +52,6 @@ def get_major_minor(h5in):
             mm[chrom][bam] = t_h5_bam_mm
     return mm
 
-
-def get_cm_and_lo(key, major, minor, h5cm, h5lo):
-    cm = h5cm[key][:]
-    lo = h5lo[key]
-    cur_idx = 0
-    # forward first
-    lof1 = lo['f1'][:]
-    lof2 = lo['f2'][:]
-    # then reverse
-    lor1 = lo['r1'][:]
-    lor2 = lo['r2'][:]
-
-    # add read-number column to covariates
-    readnumsf1 = np.zeros(lof1.shape[0])
-    readnumsf2 = np.ones(lof2.shape[0])
-    readnumsf = np.concatenate((readnumsf1, readnumsf2))
-    readnumsr1 = np.zeros(lor1.shape[0])
-    readnumsr2 = np.ones(lor2.shape[0])
-    readnumsr = np.concatenate((readnumsr1, readnumsr2))
-
-    lof = np.vstack((lof1, lof2))
-    lor = np.vstack((lor1, lor2))
-
-    cmf = cm[lof[:,0].astype(np.int)]
-    cmf = np.hstack((cmf, readnumsf[:,np.newaxis]))
-    cmr = cm[lor[:,0].astype(np.int)]
-    cmr = np.hstack((cmr, readnumsr[:,np.newaxis]))
-    # The first column indexes into cm; we no longer need it.
-    lof = lof[:,1:]
-    lor = lor[:,1:]
-
-    lo_fr = np.vstack((lof, lor))
-    cm_fr = np.vstack((cmf, cmr))
-
-    # return cm for major, cm for minor, concatenated
-    # return one cm, one lo, major and minor concatenated, num_major
-
-    if minor == 'N':
-        minor = npr.choice([el for el in 'ACGT' if el != major])
-
-    forward_major = np.zeros(4)
-    forward_major['ACGT'.index(major)] = 1.0
-    forward_major = np.tile(forward_major, (lof.shape[0], 1))
-    forward_minor = np.zeros(4)
-    forward_minor['ACGT'.index(minor)] = 1.0
-    forward_minor = np.tile(forward_minor, (lof.shape[0], 1))
-
-    reverse_major = np.zeros(4)
-    reverse_major['TGCA'.index(major)] = 1.0
-    reverse_major = np.tile(reverse_major, (lor.shape[0], 1))
-    reverse_minor = np.zeros(4)
-    reverse_minor['TGCA'.index(minor)] = 1.0
-    reverse_minor = np.tile(reverse_minor, (lor.shape[0], 1))
-
-    major_fr = np.vstack((forward_major, reverse_major))
-    minor_fr = np.vstack((forward_minor, reverse_minor))
-
-    cm_major = np.hstack((cm_fr, major_fr))
-    cm_minor = np.hstack((cm_fr, minor_fr))
-    all_cm = np.array([cm_major, cm_minor])
-    # Put the 'read' dimension first, to enable support for masking.
-    all_cm = np.swapaxes(all_cm, 0, 1).copy()
-    all_lo = lo_fr
-    gc.collect()
-    return all_cm, all_lo
 
 def main():
     print('#' + ' '.join(sys.argv))
@@ -172,15 +107,31 @@ def main():
     cm = cm.astype(np.float32)
     lo = lo.astype(np.float32)
     num_covariates = cm.shape[2]
-    cm_input, lo_input, likelihood = make_model(num_covariates,
+    cm_input, lo_input, log_posteriors = make_model(num_covariates,
                                                 args.num_frequencies)
-    ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
+    ll_model = tf.keras.Model(inputs=[cm_input, lo_input],
+                              outputs=log_posteriors)
     ll_model.load_weights(args.weights)
 
-    log_posteriors = ll_model.get_layer('log_posteriors').output
-    log_post_model = tf.keras.Model(inputs=[cm_input, lo_input],
-                                    outputs=log_posteriors)
-    import pdb; pdb.set_trace()
+    freqs = ll_model.get_layer('log_posteriors').get_weights()[1]
+    freqs_str = '#' + '\t'.join(map(lambda x: '{:.8e}'.format(x), freqs))
+    print(freqs_str)
+
+    header = '\t'.join(['best_freq', 'bam', 'chromosome', 'locus']
+                       + ['freq'+str(i) for i in range(len(freqs))])
+    for loc_key, major, minor in arglist:
+        chrom, bam, locus = loc_key.split('/')
+        cm, lo = get_cm_and_lo(loc_key, major, minor, h5cm, h5lo)
+        # We run the model one locus at a time.
+        log_posteriors = ll_model([cm[np.newaxis,:],
+                                   lo[np.newaxis,:]]).numpy()[0]
+        total_ll = scipy.special.logsumexp(log_posteriors)
+        log_posteriors_norm = log_posteriors - total_ll
+        best_freq = freqs[np.argmax(log_posteriors_norm)]
+        output_line = '\t'.join([bam, chrom, locus] + 
+            map(lambda x: '{:.8e}'.format(x), [best_freq] +
+                                    list(log_posteriors_norm)))
+        print(output_line)
 
 
 if __name__ == '__main__':
