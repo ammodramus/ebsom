@@ -143,8 +143,6 @@ for chrom in output['collapsed_locus_observations'].keys():
         bamcm = chromcm.create_group(bam)
         bamlo = chromlo.create_group(bam)
         for locus in output['collapsed_locus_observations'][chrom][bam].keys():
-            print('\r{} ({} of {}) {}'.format(bam, bam_idx, bams_len, locus),
-                  end='')
             locuslo = bamlo.create_group(locus)
             reg_cm = []
             cur_cm_idx = 0
