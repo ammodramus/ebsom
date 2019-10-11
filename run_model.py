@@ -111,6 +111,29 @@ def get_cm_and_lo(key, major, minor, h5cm, h5lo):
     gc.collect()
     return all_cm, all_lo
 
+def make_model(num_covariates, num_frequencies):
+
+    cm_input = layers.Input(shape=(None, 2, num_covariates))
+    masked_cm_input = layers.Masking(mask_value=MASK_VALUE)(cm_input)
+    layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
+    layer2 = layers.Dense(16, activation='softplus')(layer1)
+    output_softmax = layers.Dense(4, activation='softmax')(layer2)
+    nn_output = layers.Lambda(lambda x: tf.math.log(x), name='nn_output')(
+        output_softmax)
+
+    nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
+
+    lo_input = layers.Input(shape=(None, 4))
+    masked_lo_input = layers.Masking(mask_value=MASK_VALUE)(lo_input)
+
+    logposteriors = Likelihood(num_frequencies, name='log_posteriors')
+    logposteriors = logposteriors([nn_output, masked_lo_input])
+
+    likelihood = layers.Lambda(lambda x: tf.math.reduce_logsumexp(x, axis=1),
+                               name='likelihood')
+    likelihood = likelihood(logposteriors)
+    return cm_input, lo_input, likelihood
+
 
 def main():
     print('#' + ' '.join(sys.argv))
@@ -124,6 +147,14 @@ def main():
     parser.add_argument('--load-model', help='tensorflow model to load')
     parser.add_argument('--save-model', help='filename for saving model parameters',
                         default='error.model')
+    parser.add_argument('--num-epochs', help='number of passes through the data',
+                        type=int, default=10000)
+    parser.add_argument('--save-every', type=int, default=10,
+                        help='number of batches between saving parameters')
+    parser.add_argument('--num-frequencies', type=int, default=128,
+                        help='number of discrete frequencies')
+    parser.add_argument('--batch-size', type=int, default=32,
+                        help='number of loci per batch')
     args = parser.parse_args()
 
     dat = h5py.File(args.input, 'r')
@@ -167,8 +198,8 @@ def main():
         dat = h5py.File(args.input, 'r')
         h5cm = dat['covariate_matrices']
         h5lo = dat['locus_observations']
+        locus, major, minor = in_queue.get()
         while True:
-            locus, major, minor = in_queue.get()
             if minor == 'N':
                 # If there is no minor allele (either because all bases were
                 # called the same, or because two bases had the same number of
@@ -181,6 +212,10 @@ def main():
             out_queue.put(((cm, lo), np.ones(cm.shape[0])))
             del cm, lo
             gc.collect()
+            try:
+                locus, major, minor = in_queue.get(False, 1)
+            except:
+                break
 
     num_data_processing_threads = args.num_data_threads
     data_queue = mp.Queue(256)
@@ -202,57 +237,45 @@ def main():
                     input_queues[tid].put(tid_arg)
 
             while True:
-                try:
-                    ((cm, lo), ones) = data_queue.get()
-                    yield ((cm, lo), ones)
-                    del cm, lo
-                    gc.collect()
-                except Empty:
-                    break
+                ((cm, lo), ones) = data_queue.get()
+                yield ((cm, lo), ones)
+                del cm, lo
+                gc.collect()
             
 
-    ((cm, lo), _) = data_generator().next()
-    num_cm_columns = cm.shape[2]
+    ((cm, lo), _) = data_generator().next()   # example data-point
 
-    cm_input = layers.Input(shape=(None, 2, num_cm_columns))
-    masked_cm_input = layers.Masking(mask_value=MASK_VALUE)(cm_input)
-    layer1 = layers.Dense(32, activation='softplus')(masked_cm_input)
-    layer2 = layers.Dense(16, activation='softplus')(layer1)
-    output_softmax = layers.Dense(4, activation='softmax')(layer2)
-    nn_output = layers.Lambda(lambda x: tf.math.log(x))(output_softmax)
-    num_f = 128
-
-    nn_logprobs = tf.keras.Model(inputs=cm_input, outputs=nn_output)
-    logpf = Likelihood(num_f)
-
-    lo_input = layers.Input(shape=(None, 4))
-    masked_lo_input = layers.Masking(mask_value=MASK_VALUE)(lo_input)
-
-    likelihood = logpf([nn_output, masked_lo_input])
+    num_covariates = cm.shape[2]
+    cm_input, lo_input, likelihood = make_model(num_covariates,
+                                                args.num_frequencies)
 
     ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
     ll_loss = LikelihoodLoss()
     ll_model.compile(optimizer='Adam', loss=ll_loss)
-    if args.load_model:
-        ll_model.load_weights(args.load_model)
 
-    batch_size = 32
+    batch_size = args.batch_size
     output_types = ((tf.float32, tf.float32), tf.float32)
     data = tf.data.Dataset.from_generator(
         data_generator,
         output_types=output_types)
     data = data.padded_batch(
         batch_size=batch_size,
-        padded_shapes=(((-1, 2, num_cm_columns), (-1, 4)), (-1,)),
+        padded_shapes=(((-1, 2, num_covariates), (-1, 4)), (-1,)),
         padding_values=((MASK_VALUE, MASK_VALUE), MASK_VALUE))
     data = data.prefetch(2*batch_size)
 
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        args.save_model, load_weights_on_restart=True)
-    num_epochs = 10000
-    batches_per_epoch = 10
-    ll_model.fit(data, epochs=num_epochs, steps_per_epoch=batches_per_epoch,
-              callbacks=[checkpoint_callback])
+        args.save_model, save_weights_only=True)
+    
+    if args.load_model:
+        ll_model.load_weights(args.load_model)
+    else:
+        ll_model.fit(data, epochs=args.num_epochs, steps_per_epoch=args.save_every,
+                  callbacks=[checkpoint_callback])
+    ll_model.get_layer('nn_output')
+
+    for p in data_processes:
+        p.terminate()
 
 if __name__ == '__main__':
     main()
