@@ -14,21 +14,39 @@ class Likelihood(layers.Layer):
     with the log-likelihood outputs from the sequencing-error neural network.
     '''
 
-    def __init__(self, num_f, conc_factor=10):
-        super(Likelihood, self).__init__()
+    def __init__(self, num_f, conc_factor=10, **kwargs):
+        super(Likelihood, self).__init__(**kwargs)
         self.num_f = num_f
         self.conc_factor = conc_factor
         self.set_window_boundaries()
         self.set_freqs()
         self.params = self.add_weight('lpf_params', shape=(3,))
         self.supports_masking = True
-        self.set_lpf()
 
     def build(self, inp):
         pass
 
     def call(self, inp):
-        lpf = self.lpf
+        v = self.window_boundaries
+        # lA is log A, lB is log B, and expitz is expit(z)
+        params = self.params
+        lA = params[0]
+        lB = params[1]
+        expitz = params[2]
+
+        A = tf.math.exp(lA)  # translate lA from (-inf, inf) to (0, inf)
+        B = tf.math.exp(lB)  # translate lB from (-inf, inf) to (0, inf)
+        z = tf.math.sigmoid(expitz)  # translate expitz from (-inf, inf) to (0,1)
+
+
+        If_l = tf.math.betainc(A, B, v)
+        If_h = tf.math.betainc(A,B, 1-v)
+        diff_Ifl = If_l[1:]-If_l[:-1]
+        diff_If_h = If_l[1:]-If_l[:-1]
+        diff_If_h_rev = (If_h[::-1][1:] - If_h[::-1][:-1])[::-1]
+        pf = (diff_If_h + diff_If_h_rev)*(1-z)
+        lpf = tf.concat([tf.expand_dims(tf.math.log(z), axis=0), tf.math.log(pf)], axis=0, name='concat')
+
         output, masked_lo_input = inp
         output_major, output_minor = tf.split(output, 2, axis=2)
         output_major = tf.multiply(
@@ -48,9 +66,9 @@ class Likelihood(layers.Layer):
                  tf.expand_dims(logf_plus_major_lls, axis=-1)], axis=-1), axis=-1)
         # Axis 1 corresponds to the reads; axis -1 corresponds to the bases.
         f_ll = tf.math.reduce_sum(logaddexp_terms, axis=[1,-1])
-        tmp = tf.expand_dims(lpf, axis=0) + f_ll
-        final_ll = tf.math.reduce_logsumexp(tmp, axis=1)
-        return final_ll
+        posterior_logprobs = tf.expand_dims(lpf, axis=0) + f_ll
+        #final_ll = tf.math.reduce_logsumexp(tmp, axis=1)
+        return posterior_logprobs
 
     def set_window_boundaries(self):
         f = np.zeros(self.num_f)
@@ -66,41 +84,6 @@ class Likelihood(layers.Layer):
         self.freqs = f
         self.logf = tf.math.log(f)
         self.log1mf = tf.math.log(1.0-f)
-
-    def set_lpf(self):
-        '''
-        calculate log-probabilities of the minor allele frequency under a
-        beta-with-spike model
-
-        params is a 3-vector, lA, lB, and expitz, where lA and lB are logs of the
-        beta parameters, and logit(expitz) is the probability that a locus is
-        non-polymorphic.
-
-        the window boundaries run from 0 to 0.5; probabilities are integrated
-        within each window running from 0 to 0.5, and also from 0.5 to 1.0 (folded
-        over 0.5), and then summed. the distribution runs from 0 to 0.5 because
-        this is a minor allele frequency distribution.
-        '''
-        v = self.window_boundaries
-        # lA is log A, lB is log B, and expitz is expit(z)
-        params = self.params
-        lA = params[0]
-        lB = params[1]
-        expitz = params[2]
-
-        A = tf.math.exp(lA)  # translate lA from (-inf, inf) to (0, inf)
-        B = tf.math.exp(lB)  # translate lB from (-inf, inf) to (0, inf)
-        z = tf.math.sigmoid(expitz)  # translate expitz from (-inf, inf) to (0,1)
-
-
-        If_l = tf.math.betainc(A, B, v)
-        If_h = tf.math.betainc(A,B, 1-v)
-        diff_Ifl = If_l[1:]-If_l[:-1]
-        diff_If_h = If_l[1:]-If_l[:-1]
-        diff_If_h_rev = (If_h[::-1][1:] - If_h[::-1][:-1])[::-1]
-        pf = (diff_If_h + diff_If_h_rev)*(1-z)
-        self.lpf = tf.concat([tf.expand_dims(tf.math.log(z), axis=0), tf.math.log(pf)], axis=0, name='concat')
-
 
 class LikelihoodLoss(tf.keras.losses.Loss):
   def call(self, y_true, y_pred):
