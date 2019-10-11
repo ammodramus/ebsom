@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.layers as layers
@@ -18,12 +19,16 @@ class Likelihood(layers.Layer):
         super(Likelihood, self).__init__(**kwargs)
         self.num_f = num_f
         self.conc_factor = conc_factor
-        self.set_window_boundaries()
-        self.set_freqs()
-        self.params = self.add_weight('lpf_params', shape=(3,))
         self.supports_masking = True
 
     def build(self, inp):
+        self.params = self.add_weight('lpf_params', shape=(3,),
+                                      initializer='random_normal',
+                                      trainable=True)
+        self.set_window_boundaries()
+        self.set_freqs()
+        super(Likelihood, self).build(inp)
+        self.built = True
         pass
 
     def call(self, inp):
@@ -67,7 +72,6 @@ class Likelihood(layers.Layer):
         # Axis 1 corresponds to the reads; axis -1 corresponds to the bases.
         f_ll = tf.math.reduce_sum(logaddexp_terms, axis=[1,-1])
         posterior_logprobs = tf.expand_dims(lpf, axis=0) + f_ll
-        #final_ll = tf.math.reduce_logsumexp(tmp, axis=1)
         return posterior_logprobs
 
     def set_window_boundaries(self):
@@ -81,12 +85,14 @@ class Likelihood(layers.Layer):
         v = self.window_boundaries
         freq0 = tf.constant((0.,))
         f = tf.concat((freq0, (v[:-1]+v[1:])/2.0), 0)
-        self.freqs = f
+        self.freqs = tf.Variable(initial_value=f, trainable=False,
+                                 name='freqs')
         self.logf = tf.math.log(f)
         self.log1mf = tf.math.log(1.0-f)
 
 class LikelihoodLoss(tf.keras.losses.Loss):
-  def call(self, y_true, y_pred):
-      # y_pred is the likelihood itself, so we want to minimize its negative.
-      # y_true is just a vector of 1.0 here. It is ignored.
-      return -1.0*tf.keras.backend.mean(y_pred)
+    def call(self, y_true, y_pred):
+        ''' y_pred is the log-posterior value for each frequency, and
+            y_pred is a dummy value '''
+        return -1.0*tf.keras.backend.mean(tf.math.reduce_logsumexp(y_pred,
+                                                                   axis=1))

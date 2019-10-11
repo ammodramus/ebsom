@@ -109,7 +109,7 @@ def get_cm_and_lo(key, major, minor, h5cm, h5lo):
     all_cm = np.swapaxes(all_cm, 0, 1).copy()
     all_lo = lo_fr
     gc.collect()
-    return all_cm, all_lo
+    return all_cm.astype(np.float32), all_lo.astype(np.float32)
 
 def make_model(num_covariates, num_frequencies):
 
@@ -129,10 +129,7 @@ def make_model(num_covariates, num_frequencies):
     logposteriors = Likelihood(num_frequencies, name='log_posteriors')
     logposteriors = logposteriors([nn_output, masked_lo_input])
 
-    likelihood = layers.Lambda(lambda x: tf.math.reduce_logsumexp(x, axis=1),
-                               name='likelihood')
-    likelihood = likelihood(logposteriors)
-    return cm_input, lo_input, likelihood
+    return cm_input, lo_input, logposteriors
 
 
 def main():
@@ -246,10 +243,11 @@ def main():
     ((cm, lo), _) = data_generator().next()   # example data-point
 
     num_covariates = cm.shape[2]
-    cm_input, lo_input, likelihood = make_model(num_covariates,
+    cm_input, lo_input, logposteriors = make_model(num_covariates,
                                                 args.num_frequencies)
 
-    ll_model = tf.keras.Model(inputs=[cm_input, lo_input], outputs=likelihood)
+    ll_model = tf.keras.Model(inputs=[cm_input, lo_input],
+                              outputs=logposteriors)
     ll_loss = LikelihoodLoss()
     ll_model.compile(optimizer='Adam', loss=ll_loss)
 
@@ -267,15 +265,11 @@ def main():
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         args.save_model, save_weights_only=True)
     
-    if args.load_model:
-        ll_model.load_weights(args.load_model)
-    else:
-        ll_model.fit(data, epochs=args.num_epochs, steps_per_epoch=args.save_every,
-                  callbacks=[checkpoint_callback])
-    ll_model.get_layer('nn_output')
-
+    ll_model.fit(data, epochs=args.num_epochs, steps_per_epoch=args.save_every,
+              callbacks=[checkpoint_callback])
     for p in data_processes:
         p.terminate()
+
 
 if __name__ == '__main__':
     main()
