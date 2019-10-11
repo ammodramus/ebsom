@@ -20,6 +20,8 @@ number, position along the read, and potential for contamination at the site
 
 For a more concrete mathematical description, see README.ipynb.
 
+## Installation
+
 This module requires the following Python packages:
 
  - [h5py](https://www.h5py.org)
@@ -28,4 +30,38 @@ This module requires the following Python packages:
 
 [Cython](https://cython.org) is also required.
 
-Once dependencies are installed, clone this directory and run `python setup.py build_ext -i`.
+Once dependencies are installed, clone this directory and run `python setup.py
+build_ext -i`.
+
+## Usage
+
+There are three steps to running this model and calculating the posterior
+distribution of allele frequencies.
+
+ 1. Collect the covariate data from the .BAM alignments:
+       ```
+       python collect_data.py bamlist.txt chromlist.txt data.h5
+       ```
+    Here `bamlist.txt` is a file containing a list of .BAM alignments from the
+    same sequencing lane, `chromlist.txt` is a file containing a list of
+    chromosomes/contigs to analyze (or the name of a single chromosome/contig),
+    and `output.h5` is the name of the HDF5 data file to be created. See
+    `python collect_data.py -h` for details and more options.
+ 2. Optimize the global model:
+       ```
+       python run_model.py data.h5 --save-model error.model
+       ```
+    `data.h5` is the data file produced in the first step, and `error.model` is
+    the filepath (a directory, on POSIX systems) in which the optimized model
+    parameters will be saved. See `python run_model.py -h` for options that can
+    be used to control the optimization.
+ 3. Calculate and output the (log-) posterior distribution of allele
+    frequencies at each site:
+       ```
+       python calculate_posterior_probabilities.py data.h5 error.model
+       ```
+    `data.h5` and `error.model` are as in the previous two steps. This prints
+    to STDOUT a tab-separated table of the most-likely frequency (i.e., the MAP
+    estimate) and the entire log-posterior distribution of the discrete allele
+    frequencies for each alignment file, chromosome, and position. The discrete
+    allele frequencies are output in a '#'-prefixed comment line.
