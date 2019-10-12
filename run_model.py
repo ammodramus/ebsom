@@ -1,4 +1,4 @@
-from __future__ import print_function, division
+from __future__ import print_function, division, unicode_literals
 import sys
 import argparse
 import datetime
@@ -25,7 +25,7 @@ def get_args(locus_keys, mm):
     # args will be key, major, minor
     args = []
     for key in locus_keys:
-        chrom, bam, locus = key.split('/')
+        chrom, bam, locus = str(key).split('/')
         locus = int(locus)
         major, minor = mm[chrom][bam][locus]
         if major == 'N':
@@ -140,7 +140,7 @@ def main():
     parser.add_argument('input', help='input HDF5 file')
     parser.add_argument('--num-data-threads', type=int,
                         help='number of threads to use for data processing',
-                        default=2)
+                        default=0)
     parser.add_argument('--load-model', help='tensorflow model to load')
     parser.add_argument('--save-model', help='filename for saving model parameters',
                         default='error.model')
@@ -160,38 +160,41 @@ def main():
     print('# loading all_majorminor')
     all_majorminor = get_major_minor(dat)
     print('# obtaining column names')
-    colnames_str = dat.attrs['covariate_column_names']
+    colnames_str = str(dat.attrs['covariate_column_names'])
     colnames = colnames_str.split(',')
 
 
     print('# getting covariate matrix keys')
     h5cm_keys = []
-    for chrom, chrom_cm in h5cm.iteritems():
-        for bam, bam_cm in chrom_cm.iteritems():
+    for chrom, chrom_cm in h5cm.items():
+        for bam, bam_cm in chrom_cm.items():
             print('# getting covariate matrix keys: {}'.format(bam))
-            for locus, locus_cm in bam_cm.iteritems():
-                spname = locus_cm.name.split('/')
-                name = unicode('/'.join(spname[2:]))
+            for locus, locus_cm in bam_cm.items():
+                spname = str(locus_cm.name).split('/')
+                name = str('/'.join(spname[2:]))
                 h5cm_keys.append(name)
 
     print('# getting locus observation keys')
     h5lo_keys = []
-    for chrom, chrom_lo in h5lo.iteritems():
-        for bam, bam_lo in chrom_lo.iteritems():
+    for chrom, chrom_lo in h5lo.items():
+        for bam, bam_lo in chrom_lo.items():
             print('# getting locus observation keys: {}'.format(bam))
-            for locus, locus_lo in bam_lo.iteritems():
-                spname = locus_lo.name.split('/')
-                name = unicode('/'.join(spname[2:]))
+            for locus, locus_lo in bam_lo.items():
+                spname = str(locus_lo.name).split('/')
+                name = str('/'.join(spname[2:]))
                 h5lo_keys.append(name)
     assert set(h5lo_keys) == set(h5cm_keys), "covariate matrix and locus observation keys differ"
 
     locus_keys = h5cm_keys
     arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, minor)
     num_args = len(arglist)
-    dat.close()
-    del h5cm, h5lo
+    if args.num_data_threads > 0:
+        dat.close()
+        del h5cm, h5lo
 
-    def produce_data(out_queue, in_queue, h5fn):
+    def produce_data(out_queue, in_queue, h5fn, tid):
+        with open('err{}'.format(tid), 'w') as fout:
+            print('starting process', file=fout)
         dat = h5py.File(args.input, 'r')
         h5cm = dat['covariate_matrices']
         h5lo = dat['locus_observations']
@@ -214,38 +217,51 @@ def main():
             except:
                 break
 
-    num_data_processing_threads = args.num_data_threads
-    data_queue = mp.Queue(256)
-    input_queues = [mp.Queue(0) for i in range(num_data_processing_threads)]
+    if args.num_data_threads > 0:
+        data_queue = mp.Queue(256)
+        input_queues = [mp.Queue(0) for i in range(args.num_data_threads)]
 
-    data_processes = [
-        mp.Process(target=produce_data, args=(data_queue, input_queues[tid], args.input))
-                       for tid in range(num_data_processing_threads)]
-    for p in data_processes:
-        p.start()
+        data_processes = [
+            mp.Process(target=produce_data, args=(data_queue, input_queues[tid], args.input, tid))
+                           for tid in range(args.num_data_threads)]
+        for p in data_processes:
+            p.start()
 
-    def data_generator():
-        args = np.array(arglist[:])
-        while True:
-            npr.shuffle(args)
-            split_args = np.array_split(args, num_data_processing_threads)
-            for tid, tid_args in enumerate(split_args):
-                for tid_arg in tid_args:
-                    input_queues[tid].put(tid_arg)
-
+        def data_generator():
+            args = np.array(arglist[:])
             while True:
-                ((cm, lo), ones) = data_queue.get()
-                yield ((cm, lo), ones)
-                del cm, lo
-                gc.collect()
+                npr.shuffle(args)
+                split_args = np.array_split(args, args.num_data_threads)
+                for tid, tid_args in enumerate(split_args):
+                    for tid_arg in tid_args:
+                        print('putting tid_arg in input queues', file=sys.stderr)
+                        input_queues[tid].put(tid_arg)
+                        print('finished putting tid_arg in input queues', file=sys.stderr)
+                while True:
+                    ((cm, lo), ones) = data_queue.get()
+                    print('got data', file=sys.stderr)
+                    yield ((cm, lo), ones)
+                    del cm, lo
+                    gc.collect()
+
+    else:   # args.num_data_threads == 0
+        def data_generator():
+            args = np.array(arglist[:])
+            while True:
+                npr.shuffle(args)
+                for locus, major, minor in args:
+                    cm, lo = get_cm_and_lo(locus, major, minor, h5cm, h5lo)
+                    cm = cm.astype(np.float32)
+                    lo = lo.astype(np.float32)
+                    ones = np.ones(cm.shape[0]).astype(np.float32)
+                    yield ((cm, lo), ones)
             
 
-    ((cm, lo), _) = data_generator().next()   # example data-point
+    ((cm, lo), _) = next(data_generator())   # example data-point
 
     num_covariates = cm.shape[2]
     cm_input, lo_input, logposteriors = make_model(num_covariates,
                                                 args.num_frequencies)
-
     ll_model = tf.keras.Model(inputs=[cm_input, lo_input],
                               outputs=logposteriors)
     ll_loss = LikelihoodLoss()
