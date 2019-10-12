@@ -188,9 +188,7 @@ def main():
     locus_keys = h5cm_keys
     arglist = get_args(h5cm_keys, all_majorminor)  # each element is (key, major, minor)
     num_args = len(arglist)
-    if args.num_data_threads > 0:
-        dat.close()
-        del h5cm, h5lo
+    dat.close()
 
     def produce_data(out_queue, in_queue, h5fn, tid):
         with open('err{}'.format(tid), 'w') as fout:
@@ -228,23 +226,23 @@ def main():
             p.start()
 
         def data_generator():
-            args = np.array(arglist[:])
+            argscopy = np.array(arglist[:])
             while True:
-                npr.shuffle(args)
-                split_args = np.array_split(args, args.num_data_threads)
+                npr.shuffle(argscopy)
+                split_args = np.array_split(argscopy, args.num_data_threads)
                 for tid, tid_args in enumerate(split_args):
                     for tid_arg in tid_args:
-                        print('putting tid_arg in input queues', file=sys.stderr)
                         input_queues[tid].put(tid_arg)
-                        print('finished putting tid_arg in input queues', file=sys.stderr)
                 while True:
                     ((cm, lo), ones) = data_queue.get()
-                    print('got data', file=sys.stderr)
                     yield ((cm, lo), ones)
                     del cm, lo
                     gc.collect()
 
     else:   # args.num_data_threads == 0
+        dat = h5py.File(args.input, 'r')
+        h5cm = dat['covariate_matrices']
+        h5lo = dat['locus_observations']
         def data_generator():
             args = np.array(arglist[:])
             while True:
