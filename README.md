@@ -18,7 +18,7 @@ that base-call, including the true base, base quality, mapping quality, read
 number, position along the read, and potential for contamination at the site
 (allowing for index-swapping of multiplexed libraries).
 
-For a more concrete mathematical description, see [README.pdf](https://github.com/ammodramus/ebsom/blob/master/README.pdf).
+For a more concrete (but still brief) mathematical description, see [README.pdf](https://github.com/ammodramus/ebsom/blob/master/README.pdf).
 
 ## Installation
 
