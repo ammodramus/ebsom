@@ -25,7 +25,7 @@ For a more concrete (but still brief) mathematical description, see [README.pdf]
 This module requires the following Python packages:
 
  - [h5py](https://www.h5py.org)
- - [tensorflow 1.14+](https://www.tensorflow.org)
+ - [tensorflow 2.0+](https://www.tensorflow.org)
  - [pysam](https://github.com/pysam-developers/pysam)
 
 [Cython](https://cython.org) is also required.
