@@ -54,12 +54,6 @@ class Likelihood(layers.Layer):
 
         output, masked_lo_input = inp
         output_major, output_minor = tf.split(output, 2, axis=2)
-        output_major = tf.multiply(
-            output_major,
-            tf.expand_dims(masked_lo_input, axis=2))
-        output_minor = tf.multiply(
-            output_minor,
-            tf.expand_dims(masked_lo_input, axis=2))
 
         logf_plus_minor_lls = (
             tf.reshape(self.logf, (1, 1, self.num_f, 1)) + output_minor)
@@ -69,8 +63,10 @@ class Likelihood(layers.Layer):
             tf.concat(
                 [tf.expand_dims(logf_plus_minor_lls, axis=-1),
                  tf.expand_dims(logf_plus_major_lls, axis=-1)], axis=-1), axis=-1)
+        logaddexp_terms_mult_lo = tf.multiply(logaddexp_terms,
+                                              tf.expand_dims(masked_lo_input, axis=2))
         # Axis 1 corresponds to the reads; axis -1 corresponds to the bases.
-        f_ll = tf.math.reduce_sum(logaddexp_terms, axis=[1,-1])
+        f_ll = tf.math.reduce_sum(logaddexp_terms_mult_lo, axis=[1,-1])
         posterior_logprobs = tf.expand_dims(lpf, axis=0) + f_ll
         return posterior_logprobs
 
