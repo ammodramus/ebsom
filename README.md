@@ -1,7 +1,7 @@
 This repository implements a novel [empirical
 Bayesian](https://en.wikipedia.org/wiki/Empirical_Bayes_method) model for
-low-frequency variant calling with high-coverage
-pooled-sample/high-ploidy/somatic DNA sequencing data. This approach works well
+low-frequency SNP calling with high-coverage
+pooled-sample/high-ploidy/somatic DNA sequencing data. This prototype works well
 on simulated data but is **not currently working on the real data for which it
 was designed. Use with caution.**
 
@@ -18,14 +18,14 @@ that base-call, including the true base, base quality, mapping quality, read
 number, position along the read, and potential for contamination at the site
 (allowing for index-swapping of multiplexed libraries).
 
-For a more concrete mathematical description, see [README.pdf](https://github.com/ammodramus/ebsom/blob/master/README.pdf).
+For a more concrete (but still brief) mathematical description, see [README.pdf](https://github.com/ammodramus/ebsom/blob/master/README.pdf).
 
 ## Installation
 
 This module requires the following Python packages:
 
  - [h5py](https://www.h5py.org)
- - [tensorflow 1.14+](https://www.tensorflow.org)
+ - [tensorflow 2.0+](https://www.tensorflow.org)
  - [pysam](https://github.com/pysam-developers/pysam)
 
 [Cython](https://cython.org) is also required.
