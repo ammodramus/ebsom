@@ -132,6 +132,32 @@ def make_model(num_covariates, num_frequencies):
     return cm_input, lo_input, logposteriors
 
 
+def produce_data(out_queue, in_queue, h5fn, tid):
+    with open('err{}'.format(tid), 'w') as fout:
+        print('starting process', file=fout)
+    dat = h5py.File(h5fn, 'r')
+    h5cm = dat['covariate_matrices']
+    h5lo = dat['locus_observations']
+    locus, major, minor = in_queue.get()
+    while True:
+        if minor == 'N':
+            # If there is no minor allele (either because all bases were
+            # called the same, or because two bases had the same number of
+            # variant calls), choose one at random.
+            other_bases = [base for base in 'ACGT' if base != major]
+            minor = npr.choice(other_bases)
+        cm, lo = get_cm_and_lo(locus, major, minor, h5cm, h5lo)
+        cm = cm.astype(np.float32)
+        lo = lo.astype(np.float32)
+        out_queue.put(((cm, lo), np.ones(cm.shape[0])))
+        del cm, lo
+        gc.collect()
+        try:
+            locus, major, minor = in_queue.get(False, 1)
+        except Empty:
+            print('# breaking!!!')
+            break
+
 def main():
     print('#' + ' '.join(sys.argv))
 
@@ -190,30 +216,6 @@ def main():
     num_args = len(arglist)
     dat.close()
 
-    def produce_data(out_queue, in_queue, h5fn, tid):
-        with open('err{}'.format(tid), 'w') as fout:
-            print('starting process', file=fout)
-        dat = h5py.File(args.input, 'r')
-        h5cm = dat['covariate_matrices']
-        h5lo = dat['locus_observations']
-        locus, major, minor = in_queue.get()
-        while True:
-            if minor == 'N':
-                # If there is no minor allele (either because all bases were
-                # called the same, or because two bases had the same number of
-                # variant calls), choose one at random.
-                other_bases = [base for base in 'ACGT' if base != major]
-                minor = npr.choice(other_bases)
-            cm, lo = get_cm_and_lo(locus, major, minor, h5cm, h5lo)
-            cm = cm.astype(np.float32)
-            lo = lo.astype(np.float32)
-            out_queue.put(((cm, lo), np.ones(cm.shape[0])))
-            del cm, lo
-            gc.collect()
-            try:
-                locus, major, minor = in_queue.get(False, 1)
-            except:
-                break
 
     if args.num_data_threads > 0:
         data_queue = mp.Queue(256)
@@ -234,7 +236,10 @@ def main():
                     for tid_arg in tid_args:
                         input_queues[tid].put(tid_arg)
                 while True:
-                    ((cm, lo), ones) = data_queue.get()
+                    try:
+                        ((cm, lo), ones) = data_queue.get(False, 10)
+                    except Empty:
+                        break
                     yield ((cm, lo), ones)
                     del cm, lo
                     gc.collect()
