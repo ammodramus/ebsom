@@ -12,13 +12,10 @@ except ImportError:
 
 import h5py
 import numpy as np
-import numpy.random as npr
 import tensorflow as tf
-import tensorflow.keras.layers as layers
 import scipy
 
 import beta_with_spikes_integrated as bws
-from likelihood_layer import Likelihood, LikelihoodLoss
 from run_model import make_model, get_cm_and_lo
 
 class DebugCallback(tf.keras.callbacks.Callback):
@@ -111,7 +108,7 @@ def main():
                                                 args.num_frequencies)
     ll_model = tf.keras.Model(inputs=[cm_input, lo_input],
                               outputs=log_posteriors)
-    ll_model.load_weights(args.weights)
+        ll_model.load_weights(args.weights)
 
     freqs = ll_model.get_layer('log_posteriors').get_weights()[1]
     freqs_str = '#' + '\t'.join(map(lambda x: '{:.8e}'.format(x), freqs))
