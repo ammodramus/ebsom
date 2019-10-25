@@ -9,6 +9,32 @@ def _get_psmc_times(n, tmax, conc_factor = 10):
         np.arange(1,n+1, dtype = np.float)/n * np.log(1 + conc_factor*tmax))-1)
     return t
 
+# The TF betainc gradient isn't implemented, so we use symmetric finite
+# differences to estimate it.
+@tf.custom_gradient
+def betainc(A, B, v):
+    # Casting to 64-bit is necessary for accuarcy
+    A = tf.cast(A, tf.float64)
+    B = tf.cast(B, tf.float64)
+    v = tf.cast(v, tf.float64)
+    ret = tf.math.betainc(A, B, v)
+    epsilon = 1e-8
+    def grad_fn(dy):
+        a_inc = tf.math.betainc(A + epsilon, B, v)
+        a_dec = tf.math.betainc(A - epsilon, B, v)
+        a_grad = (a_inc-a_dec)/(2.0*epsilon)
+
+        b_inc = tf.math.betainc(A, B + epsilon, v)
+        b_dec = tf.math.betainc(A, B - epsilon, v)
+        b_grad = (b_inc-b_dec)/(2.0*epsilon)
+
+        v_grad = None   # Not implemented
+        dy = tf.cast(dy, tf.float64)
+        return [tf.cast(tf.tensordot(dy,a_grad,axes=[0,0]), tf.float32),
+                tf.cast(tf.tensordot(dy,b_grad,axes=[0,0]), tf.float32), v_grad]
+    return tf.cast(ret, tf.float32), grad_fn
+
+
 class Likelihood(layers.Layer):
     '''
     Implements a tf.keras Layer that combines the allele frequency spectrum
@@ -44,8 +70,8 @@ class Likelihood(layers.Layer):
         z = tf.math.sigmoid(expitz)  # translate expitz from (-inf, inf) to (0,1)
 
 
-        If_l = tf.math.betainc(A, B, v)
-        If_h = tf.math.betainc(A,B, 1-v)
+        If_l = betainc(A, B, v)
+        If_h = betainc(A,B, 1-v)
         diff_Ifl = If_l[1:]-If_l[:-1]
         diff_If_h = If_l[1:]-If_l[:-1]
         diff_If_h_rev = (If_h[::-1][1:] - If_h[::-1][:-1])[::-1]
@@ -86,9 +112,7 @@ class Likelihood(layers.Layer):
         self.logf = tf.math.log(f)
         self.log1mf = tf.math.log(1.0-f)
 
-class LikelihoodLoss(tf.keras.losses.Loss):
-    def call(self, y_true, y_pred):
-        ''' y_pred is the log-posterior value for each frequency, and
-            y_pred is a dummy value '''
-        return -1.0*tf.keras.backend.mean(tf.math.reduce_logsumexp(y_pred,
-                                                                   axis=1))
+@tf.function
+def likelihood_loss(log_posts):
+    return -1.0*tf.keras.backend.mean(tf.math.reduce_logsumexp(log_posts,
+                                                               axis=1))
