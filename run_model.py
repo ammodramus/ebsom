@@ -17,9 +17,37 @@ import tensorflow as tf
 import tensorflow.keras.layers as layers
 
 import beta_with_spikes_integrated as bws
-from likelihood_layer import Likelihood, LikelihoodLoss
+from likelihood_layer import Likelihood, likelihood_loss
+
+
+logdir = "logs/scalars/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir, profile_batch=2)
+file_writer = tf.summary.create_file_writer(logdir + "/metrics")
+file_writer.set_as_default()
+
+
 
 MASK_VALUE = -1e28
+
+def write_summaries(log_posteriors, loss, step):
+    ''' log_posteriors is a layer. '''
+    tf.summary.scalar(
+        'loss',
+        loss,
+        step)
+    tf.summary.scalar(
+        'prob_0',
+        log_posteriors.get_weights()[0][2],
+        step)
+    tf.summary.scalar(
+        'a',
+        log_posteriors.get_weights()[0][0],
+        step)
+    tf.summary.scalar(
+        'b',
+        log_posteriors.get_weights()[0][1],
+        step)
+    return
 
 def get_args(locus_keys, mm):
     # args will be key, major, minor
@@ -129,6 +157,7 @@ def make_model(num_covariates, num_frequencies):
     logposteriors = Likelihood(num_frequencies, name='log_posteriors')
     logposteriors = logposteriors([nn_output, masked_lo_input])
 
+
     return cm_input, lo_input, logposteriors
 
 
@@ -155,7 +184,6 @@ def produce_data(out_queue, in_queue, h5fn, tid):
         try:
             locus, major, minor = in_queue.get(False, 1)
         except Empty:
-            print('# breaking!!!')
             break
 
 def main():
@@ -267,8 +295,8 @@ def main():
                                                 args.num_frequencies)
     ll_model = tf.keras.Model(inputs=[cm_input, lo_input],
                               outputs=logposteriors)
-    ll_loss = LikelihoodLoss()
-    ll_model.compile(optimizer='Adam', loss=ll_loss)
+    if args.load_model:
+        ll_model.load_weights(args.load_model)
 
     batch_size = args.batch_size
     output_types = ((tf.float32, tf.float32), tf.float32)
@@ -279,13 +307,32 @@ def main():
         batch_size=batch_size,
         padded_shapes=(((-1, 2, num_covariates), (-1, 4)), (-1,)),
         padding_values=((MASK_VALUE, MASK_VALUE), MASK_VALUE))
-    data = data.prefetch(2*batch_size)
-
-    checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        args.save_model, save_weights_only=True)
+    data = data.prefetch(batch_size)
     
-    ll_model.fit(data, epochs=args.num_epochs, steps_per_epoch=args.save_every,
-              callbacks=[checkpoint_callback])
+    optimizer = tf.keras.optimizers.Adam()
+
+    batches_per_epoch = np.ceil(num_args / args.batch_size)
+
+    tf.config.experimental_run_functions_eagerly(True)
+    
+    for i, ((cm, lo), _) in enumerate(data):
+        if i % batches_per_epoch == 0:
+            print('\Epoch {}'.format(int(i // batches_per_epoch)))
+            prog_bar = tf.keras.utils.Progbar(batches_per_epoch,
+                                              stateful_metrics=['loss'],
+                                              unit_name='batch')
+        with tf.GradientTape() as tape:
+            log_posts = ll_model([cm, lo])
+            ll_loss = likelihood_loss(log_posts)
+        grads = tape.gradient(ll_loss, ll_model.trainable_variables)
+        optimizer.apply_gradients(zip(grads, ll_model.trainable_variables))
+        if i % args.save_every == 0:
+            ll_model.save_weights(args.save_model)
+            write_summaries(ll_model.get_layer('log_posteriors'), ll_loss, i)
+
+        tf.summary.scalar('loss', ll_loss, i)
+        prog_bar.update(i % batches_per_epoch, [('loss', ll_loss)])
+
     for p in data_processes:
         p.terminate()
 
